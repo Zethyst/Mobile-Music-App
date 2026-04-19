@@ -10,7 +10,13 @@ import { searchYouTube, getStreamUrl, SearchResult, StreamInfo } from '../servic
 import { COLORS, tracks as libraryTracks } from '../constants';
 import { styles } from '../styles';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
+import BackSwipeContainer from '../components/BackSwipeContainer';
 import type { RootStackParamList } from '../navigation/types';
+import {
+  hapticLight,
+  hapticMedium,
+  hapticSuccess,
+} from '../utils/haptics';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
 
@@ -38,6 +44,7 @@ export default function SearchScreen({ navigation }: Props) {
 
   const handleSearch = async () => {
     if (!query.trim()) return;
+    hapticLight();
     setLoading(true);
     setResults([]);
     try {
@@ -77,6 +84,7 @@ export default function SearchScreen({ navigation }: Props) {
     try {
       const stream = await getStreamUrl(item.videoId);
       if (!stream) { setTimeout(() => Alert.alert('Could not get stream URL'), 0); return; }
+      hapticMedium();
       await TrackPlayer.reset();
       await TrackPlayer.add(buildTrack(item, stream));
       await TrackPlayer.play();
@@ -100,6 +108,7 @@ export default function SearchScreen({ navigation }: Props) {
       const track = buildTrack(item, stream);
       const queue = await TrackPlayer.getQueue();
       if (isLibraryOrEmptyQueue(queue)) {
+        hapticMedium();
         await TrackPlayer.reset();
         await TrackPlayer.add(track);
         await TrackPlayer.play();
@@ -124,6 +133,7 @@ export default function SearchScreen({ navigation }: Props) {
 
   return (
     <ScreenWithMiniPlayer>
+      <BackSwipeContainer onBack={() => navigation.goBack()}>
       <ScrollView
         style={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -134,7 +144,10 @@ export default function SearchScreen({ navigation }: Props) {
           {/* Header */}
           <View style={styles.headerRow}>
             <TouchableOpacity
-              onPress={() => navigation.goBack()}
+              onPress={() => {
+                hapticLight();
+                navigation.goBack();
+              }}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityLabel="Back">
@@ -142,7 +155,10 @@ export default function SearchScreen({ navigation }: Props) {
             </TouchableOpacity>
             <Text style={styles.nowPlayingTitle}>Search</Text>
             <TouchableOpacity
-              onPress={() => navigation.navigate('Queue')}
+              onPress={() => {
+                hapticLight();
+                navigation.navigate('Queue');
+              }}
               accessibilityRole="button"
               accessibilityLabel="Open queue">
               <Icon name="list-ul" size={20} color="#444" />
@@ -162,7 +178,10 @@ export default function SearchScreen({ navigation }: Props) {
               onSubmitEditing={handleSearch}
               returnKeyType="search"
             />
-            <TouchableOpacity style={searchBtn} onPress={handleSearch} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={searchBtn}
+              onPress={() => void handleSearch()}
+              activeOpacity={0.8}>
               <Icon name="search" size={15} color={COLORS.white} />
             </TouchableOpacity>
           </View>
@@ -232,6 +251,7 @@ export default function SearchScreen({ navigation }: Props) {
 
         </View>
       </ScrollView>
+      </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }

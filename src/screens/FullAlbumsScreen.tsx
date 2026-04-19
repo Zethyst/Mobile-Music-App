@@ -15,6 +15,8 @@ import { playLibraryTrack } from '../services/musicPlayerServices';
 import { styles } from '../styles';
 import type { RootStackParamList } from '../navigation/types';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
+import BackSwipeContainer from '../components/BackSwipeContainer';
+import { hapticLight, hapticMedium } from '../utils/haptics';
 import AlbumCardFooterBlur from '../components/AlbumCardFooterBlur';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullAlbums'>;
@@ -31,10 +33,14 @@ export default function FullAlbumsScreen({ navigation }: Props) {
   const rowWidth = gridInnerWidth > 0 ? gridInnerWidth : fallbackGridW;
   const cardW = (rowWidth - COLUMN_GAP) / 2;
 
-  const playAlbum = (trackIndex: number) => playLibraryTrack(trackIndex);
+  const playAlbum = (trackIndex: number) => {
+    hapticMedium();
+    void playLibraryTrack(trackIndex);
+  };
 
   return (
     <ScreenWithMiniPlayer>
+      <BackSwipeContainer onBack={() => navigation.goBack()}>
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -88,6 +94,7 @@ export default function FullAlbumsScreen({ navigation }: Props) {
           </View>
         </View>
       </ScrollView>
+      </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }

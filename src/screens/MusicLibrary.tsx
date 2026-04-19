@@ -25,9 +25,15 @@ import { styles, formatTime } from '../styles';
 import { playLibraryTrack } from '../services/musicPlayerServices';
 import type { RootStackParamList } from '../navigation/types';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
+import BackSwipeContainer from '../components/BackSwipeContainer';
 import AlbumCardFooterBlur from '../components/AlbumCardFooterBlur';
 import { openSpotifyArtist } from '../utils/openSpotifyArtist';
 import { openContactWithAppPreferred } from '../utils/openContactLink';
+import {
+  hapticLight,
+  hapticMedium,
+  hapticSelection,
+} from '../utils/haptics';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
@@ -54,7 +60,10 @@ export default function MusicLibrary({ navigation }: Props) {
     0,
   );
 
-  const playTrack = (index: number) => playLibraryTrack(index);
+  const playTrack = (index: number) => {
+    hapticMedium();
+    void playLibraryTrack(index);
+  };
 
   const carouselPageWidth =
     measuredCarouselWidth ??
@@ -116,6 +125,7 @@ export default function MusicLibrary({ navigation }: Props) {
 
   return (
     <ScreenWithMiniPlayer>
+    <BackSwipeContainer onBack={() => navigation.goBack()}>
     <ScrollView
       style={styles.container}
       nestedScrollEnabled
@@ -132,14 +142,19 @@ export default function MusicLibrary({ navigation }: Props) {
         ]}>
         <View style={styles.headerRow}>
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              navigation.goBack();
+            }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Back to now playing">
             <Icon name="arrow-left" size={20} color="#444" />
           </TouchableOpacity>
           <Text style={styles.nowPlayingTitle}>Music Library</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Search')}>
+          <TouchableOpacity
+            onPress={() => {
+              navigation.navigate('Search');
+            }}>
                 <Icon name="search" size={20} color={COLORS.text} />
               </TouchableOpacity>
           <View style={{ width: 20 }} />
@@ -195,6 +210,7 @@ export default function MusicLibrary({ navigation }: Props) {
                         <TouchableOpacity
                           style={styles.followBtnSpotlight}
                           onPress={() => {
+                            hapticMedium();
                             if ('contactLink' in artist && artist.contactLink) {
                               const app =
                                 'contactAppLink' in artist &&
@@ -232,7 +248,10 @@ export default function MusicLibrary({ navigation }: Props) {
               {spotlightItems.map((artist, i) => (
                 <TouchableOpacity
                   key={`dot-${artist.id}`}
-                  onPress={() => goToCarouselSlide(i)}
+                  onPress={() => {
+                    hapticSelection();
+                    goToCarouselSlide(i);
+                  }}
                   hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Show ${artist.name}`}
@@ -255,7 +274,9 @@ export default function MusicLibrary({ navigation }: Props) {
             </View>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('FullAlbums')}>
+              onPress={() => {
+                navigation.navigate('FullAlbums');
+              }}>
               <Text style={styles.seeAll}>See all</Text>
             </TouchableOpacity>
           </View>
@@ -294,7 +315,9 @@ export default function MusicLibrary({ navigation }: Props) {
             </View>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('FullSongs')}>
+              onPress={() => {
+                navigation.navigate('FullSongs');
+              }}>
               <Text style={styles.seeAll}>See all</Text>
             </TouchableOpacity>
           </View>
@@ -343,6 +366,7 @@ export default function MusicLibrary({ navigation }: Props) {
         </View>
       </View>
     </ScrollView>
+    </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }

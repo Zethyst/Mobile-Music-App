@@ -14,16 +14,22 @@ import { playLibraryTrack } from '../services/musicPlayerServices';
 import { styles, formatTime } from '../styles';
 import type { RootStackParamList } from '../navigation/types';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
+import BackSwipeContainer from '../components/BackSwipeContainer';
+import { hapticLight, hapticMedium } from '../utils/haptics';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullSongs'>;
 
 export default function FullSongsScreen({ navigation }: Props) {
   const activeTrack = useActiveTrack();
 
-  const playTrack = (index: number) => playLibraryTrack(index);
+  const playTrack = (index: number) => {
+    hapticMedium();
+    void playLibraryTrack(index);
+  };
 
   return (
     <ScreenWithMiniPlayer>
+      <BackSwipeContainer onBack={() => navigation.goBack()}>
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -86,6 +92,7 @@ export default function FullSongsScreen({ navigation }: Props) {
           </View>
         </View>
       </ScrollView>
+      </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }

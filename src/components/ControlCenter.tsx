@@ -11,6 +11,11 @@ import Icon from 'react-native-vector-icons/FontAwesome5';
 import { styles } from '../styles';
 import { COLORS } from '../constants';
 import type { RootStackParamList } from '../navigation/types';
+import {
+  hapticHeavy,
+  hapticLight,
+  hapticMedium,
+} from '../utils/haptics';
 
 /** Shared neumorphic gradient colours matching the CSS spec */
 const NEUMORPH_GRADIENT: string[] = ['#cacaca', '#f8f4fc'];
@@ -48,17 +53,29 @@ export default function ControlCenter() {
     };
   }, []);
 
-  const skipToNext = async () => { await TrackPlayer.skipToNext(); };
-  const skipToPrevious = async () => { await TrackPlayer.skipToPrevious(); };
+  const skipToNext = async () => {
+    hapticMedium();
+    await TrackPlayer.skipToNext();
+  };
+  const skipToPrevious = async () => {
+    hapticMedium();
+    await TrackPlayer.skipToPrevious();
+  };
 
   const togglePlayback = async () => {
     const currentTrack = await TrackPlayer.getActiveTrackIndex();
     if (currentTrack === null || currentTrack === undefined) return;
-    if (isPlaying) { await TrackPlayer.pause(); } else { await TrackPlayer.play(); }
+    hapticHeavy();
+    if (isPlaying) {
+      await TrackPlayer.pause();
+    } else {
+      await TrackPlayer.play();
+    }
   };
 
   const toggleMute = useCallback(async () => {
     try {
+      hapticLight();
       if (isMuted) {
         const restore =
           volumeBeforeMuteRef.current >= VOL_EPS
@@ -84,7 +101,10 @@ export default function ControlCenter() {
       <TouchableOpacity
         style={styles.iconBtn}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('Queue')}
+        onPress={() => {
+          hapticLight();
+          navigation.navigate('Queue');
+        }}
         accessibilityRole="button"
         accessibilityLabel="Open queue">
         <Icon name="list-ul" size={20} color="rgba(128,128,128,0.6)" />

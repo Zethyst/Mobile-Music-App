@@ -9,6 +9,11 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import TrackPlayer, { useProgress } from 'react-native-track-player';
 import { styles, formatTime } from '../styles';
+import {
+  hapticLight,
+  hapticSeekComplete,
+  hapticSelection,
+} from '../utils/haptics';
 
 const THUMB_SIZE = 14;
 const TRACK_HEIGHT = 4;
@@ -24,6 +29,7 @@ export default function SongSlider() {
 
   // null = not dragging; number = drag ratio 0-1
   const [dragRatio, setDragRatio] = useState<number | null>(null);
+  const scrubBucketRef = useRef<number | null>(null);
 
   const clamp = (v: number, lo: number, hi: number) =>
     Math.max(lo, Math.min(hi, v));
@@ -45,13 +51,22 @@ export default function SongSlider() {
       onShouldBlockNativeResponder: () => true,
 
       onPanResponderGrant: evt => {
+        scrubBucketRef.current = null;
+        hapticLight();
         const r = ratioFromEvent(evt.nativeEvent.locationX);
         if (r !== null) setDragRatio(r);
       },
 
       onPanResponderMove: evt => {
         const r = ratioFromEvent(evt.nativeEvent.locationX);
-        if (r !== null) setDragRatio(r);
+        if (r !== null) {
+          setDragRatio(r);
+          const bucket = Math.min(9, Math.floor(r * 10));
+          if (scrubBucketRef.current !== bucket) {
+            scrubBucketRef.current = bucket;
+            hapticSelection();
+          }
+        }
       },
 
       onPanResponderRelease: async evt => {
@@ -59,12 +74,15 @@ export default function SongSlider() {
         if (r !== null) {
           // durationRef.current is always current — no stale closure
           await TrackPlayer.seekTo(r * durationRef.current);
+          hapticSeekComplete();
         }
         setDragRatio(null);
+        scrubBucketRef.current = null;
       },
 
       onPanResponderTerminate: () => {
         setDragRatio(null);
+        scrubBucketRef.current = null;
       },
     }),
   ).current;

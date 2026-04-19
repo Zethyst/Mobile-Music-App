@@ -17,7 +17,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants';
 import { styles as sh } from '../styles';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
+import BackSwipeContainer from '../components/BackSwipeContainer';
 import type { RootStackParamList } from '../navigation/types';
+import {
+  hapticDragStart,
+  hapticLight,
+  hapticMedium,
+  hapticSeekComplete,
+  hapticSelection,
+  hapticWarning,
+} from '../utils/haptics';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Queue'>;
 
@@ -65,6 +74,7 @@ export default function QueueScreen({ navigation }: Props) {
 
   const onHandleGrant = useCallback(
     (index: number) => (e: GestureResponderEvent) => {
+      hapticDragStart();
       // Refresh list position on each drag start
       scrollContainerRef.current?.measureInWindow((_, y) => {
         listPageYRef.current = y;
@@ -93,6 +103,7 @@ export default function QueueScreen({ navigation }: Props) {
       );
       if (hover !== hoverRef.current) {
         hoverRef.current = hover;
+        hapticSelection();
         setDragHover(hover);
       }
     },
@@ -117,6 +128,7 @@ export default function QueueScreen({ navigation }: Props) {
 
     try {
       await TrackPlayer.move(from, to);
+      hapticSeekComplete();
     } catch {
       loadQueue();
     }
@@ -126,6 +138,7 @@ export default function QueueScreen({ navigation }: Props) {
 
   const playTrack = useCallback(async (index: number) => {
     if (isDraggingRef.current) return;
+    hapticMedium();
     try {
       await TrackPlayer.skip(index);
       await TrackPlayer.play();
@@ -155,6 +168,7 @@ export default function QueueScreen({ navigation }: Props) {
   // ── Clear entire queue ───────────────────────────────────────
 
   const clearQueue = () => {
+    hapticWarning();
     setTimeout(() => {
       Alert.alert('Clear queue', 'Remove all tracks from the queue?', [
         { text: 'Cancel', style: 'cancel' },
@@ -163,6 +177,7 @@ export default function QueueScreen({ navigation }: Props) {
           style: 'destructive',
           onPress: async () => {
             try {
+              hapticWarning();
               await TrackPlayer.reset();
               setQueue([]);
               queueRef.current = [];
@@ -181,13 +196,17 @@ export default function QueueScreen({ navigation }: Props) {
 
   return (
     <ScreenWithMiniPlayer>
+      <BackSwipeContainer edgeWidth={14} onBack={() => navigation.goBack()}>
       <View style={sh.container}>
 
         {/* Header */}
         <View style={qs.header}>
           <View style={sh.headerRow}>
             <TouchableOpacity
-              onPress={() => navigation.goBack()}
+              onPress={() => {
+                hapticLight();
+                navigation.goBack();
+              }}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityLabel="Back">
@@ -196,7 +215,10 @@ export default function QueueScreen({ navigation }: Props) {
             <Text style={sh.nowPlayingTitle}>Queue</Text>
             <View style={qs.headerActions}>
               <TouchableOpacity
-                onPress={loadQueue}
+                onPress={() => {
+                  hapticLight();
+                  void loadQueue();
+                }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                 <Icon name="sync-alt" size={15} color={COLORS.textLight} />
               </TouchableOpacity>
@@ -359,6 +381,7 @@ export default function QueueScreen({ navigation }: Props) {
           </Animated.View>
         )}
       </View>
+      </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }

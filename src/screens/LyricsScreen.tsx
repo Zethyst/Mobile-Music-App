@@ -5,6 +5,8 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { useActiveTrack, useProgress } from 'react-native-track-player';
 import { fetchLyrics, LyricsResult } from '../services/lyricsService';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
+import { hapticLight } from '../utils/haptics';
+import BackSwipeContainer from '../components/BackSwipeContainer';
 import { styles } from '../styles';
 import { COLORS } from '../constants';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -130,6 +132,7 @@ export default function LyricsScreen({ navigation }: Props) {
 
   return (
     <ScreenWithMiniPlayer>
+      <BackSwipeContainer onBack={() => navigation.goBack()}>
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -177,6 +180,7 @@ export default function LyricsScreen({ navigation }: Props) {
           {renderLyrics()}
         </View>
       </ScrollView>
+      </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }
