@@ -63,4 +63,8 @@ export const playbackService = async (): Promise<void> => {
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
     TrackPlayer.stop();
   });
+
+  TrackPlayer.addEventListener(Event.PlaybackError, (e) => {
+    console.error('[TrackPlayer] PlaybackError:', e.message, e.code);
+  });
 };

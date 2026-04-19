@@ -89,7 +89,7 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   try {
     const bin = ytDlpBin();
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --get-url --format "bestaudio/best" --extractor-args "youtube:player_client=tv" "https://www.youtube.com/watch?v=${videoId}"`
+      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --get-url --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best" --extractor-args "youtube:player_client=tv" "https://www.youtube.com/watch?v=${videoId}"`
     );
     const url = stdout.trim().split('\n')[0];
     if (!url) throw new Error('No stream URL returned');
