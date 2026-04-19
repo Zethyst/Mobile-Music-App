@@ -15,6 +15,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LinearGradient from 'react-native-linear-gradient';
 import { setupPlayer, addTracks } from './services/musicPlayerServices';
+import { pingHealthCheck } from './services/streamService';
 import MusicPlayer from './screens/MusicPlayer';
 import MusicLibrary from './screens/MusicLibrary';
 import FullAlbumsScreen from './screens/FullAlbumsScreen';
@@ -275,6 +276,7 @@ export default function App() {
   const [isPlayerReady, setIsPlayerReady] = useState(false);
 
   useEffect(() => {
+    pingHealthCheck();
     let mounted = true;
     (async () => {
       const isSetup = await setupPlayer();
