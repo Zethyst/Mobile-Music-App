@@ -24,8 +24,9 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
   return data.results ?? [];
 }
 
-export async function getStreamUrl(videoId: string): Promise<string | null> {
-  const res  = await fetch(`${BACKEND}/stream-url?videoId=${encodeURIComponent(videoId)}`);
-  const data = await res.json() as { url: string | null };
-  return data.url ?? null;
+/** Returns the server-proxied stream URL for a YouTube video.
+ *  ExoPlayer streams from this URL; the server fetches from YouTube using the
+ *  same IP that resolved the CDN URL, avoiding IP-mismatch 403s on Render. */
+export function getStreamUrl(videoId: string): string {
+  return `${BACKEND}/stream?videoId=${encodeURIComponent(videoId)}`;
 }

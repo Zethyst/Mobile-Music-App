@@ -74,8 +74,7 @@ export default function SearchScreen({ navigation }: Props) {
   const handlePlayNow = async (item: SearchResult) => {
     setLoadingId(item.videoId);
     try {
-      const url = await getStreamUrl(item.videoId);
-      if (!url) { setTimeout(() => Alert.alert('Could not get stream URL'), 0); return; }
+      const url = getStreamUrl(item.videoId);
       await TrackPlayer.reset();
       await TrackPlayer.add(buildTrack(item, url));
       await TrackPlayer.play();
@@ -94,9 +93,7 @@ export default function SearchScreen({ navigation }: Props) {
   const handleAddToQueue = async (item: SearchResult) => {
     setLoadingId(item.videoId);
     try {
-      const url = await getStreamUrl(item.videoId);
-      if (!url) { setTimeout(() => Alert.alert('Could not get stream URL'), 0); return; }
-
+      const url = getStreamUrl(item.videoId);
       const track = buildTrack(item, url);
       const queue = await TrackPlayer.getQueue();
       if (isLibraryOrEmptyQueue(queue)) {
