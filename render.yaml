@@ -3,11 +3,12 @@ services:
     name: music-stream-backend
     runtime: node
     buildCommand: |
+      mkdir -p bin
+      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp
+      chmod a+rx bin/yt-dlp
       npm install
       npm run build
-      mkdir -p backend/bin
-      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o backend/bin/yt-dlp
-      chmod a+rx backend/bin/yt-dlp
+      # Install Node.js as JS runtime for yt-dlp
     startCommand: npm start
     envVars:
       - key: PORT

@@ -8,6 +8,9 @@ import { promisify } from 'util';
 const app  = express();
 const run  = promisify(exec);
 const PORT = process.env.PORT || 8000;
+const cookiesPath = path.join(__dirname, '..', 'cookies.txt');
+const cookiesFlag = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : '';
+
 
 /** Render build drops the binary in `backend/bin/`; locally use PATH or YT_DLP_PATH. */
 function ytDlpBin(): string {
@@ -42,7 +45,7 @@ app.get('/search', async (req: Request, res: Response) => {
     const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-      `${bin} --dump-json --flat-playlist --playlist-end 8 "ytsearch8:${q} audio"`
+     `${bin} ${cookiesFlag} --dump-json --flat-playlist --playlist-end 8 "ytsearch8:${q} audio"`
     );
 
     const results = stdout
@@ -76,8 +79,7 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   try {
     const bin = ytDlpBin();
     const { stdout } = await run(
-      // bestaudio gives m4a/webm — both stream fine in react-native-track-player
-      `${bin} --get-url --format bestaudio "https://www.youtube.com/watch?v=${videoId}"`
+     `${bin} ${cookiesFlag} --get-url --format bestaudio "https://www.youtube.com/watch?v=${videoId}"`
     );
     const url = stdout.trim().split('\n')[0]; // take first URL if multiple
     res.json({ url });
