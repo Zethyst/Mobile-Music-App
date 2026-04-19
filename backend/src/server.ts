@@ -1,16 +1,23 @@
 import path from 'path';
+import dotenv from 'dotenv';
 import fs from 'fs';
+
+// Load `.env` from `backend/` whether you run from `backend/` or repo root (`node backend/dist/server.js`).
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
-const app  = express();
-const run  = promisify(exec);
+const app = express();
+const run = promisify(exec);
 const PORT = process.env.PORT || 8000;
 const cookiesPath = path.join(__dirname, '..', 'cookies.txt');
-const cookiesFlag = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : '';
-
+const cookiesFlag = fs.existsSync(cookiesPath)
+  ? `--cookies "${cookiesPath}"`
+  : '';
+const PROXY = process.env.YTDLP_PROXY ?? ''; // e.g. "http://user:pass@host:port"
+const proxyFlag = PROXY ? `--proxy "${PROXY}"` : '';
 
 /** Render build drops the binary in `backend/bin/`; locally use PATH or YT_DLP_PATH. */
 function ytDlpBin(): string {
@@ -29,11 +36,11 @@ app.use(express.json());
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ 
+  res.json({
     status: 'ok',
     __dirname,
     ytDlpBin: ytDlpBin(),
-    binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp'))
+    binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp')),
   });
 });
 // ─── Search: returns title/artist/thumbnail list ──────────────────────────────
@@ -45,7 +52,7 @@ app.get('/search', async (req: Request, res: Response) => {
     const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-     `${bin} ${cookiesFlag} --dump-json --flat-playlist --playlist-end 8 "ytsearch8:${q} audio"`
+      `${bin} ${cookiesFlag} ${proxyFlag} --dump-json --flat-playlist --playlist-end 8 --extractor-args "youtube:player_client=ios" "ytsearch8:${q} audio"`,
     );
 
     const results = stdout
@@ -55,11 +62,11 @@ app.get('/search', async (req: Request, res: Response) => {
       .map(line => {
         const v = JSON.parse(line);
         return {
-          videoId:   v.id,
-          title:     v.title,
-          artist:    v.channel ?? v.uploader ?? '',
+          videoId: v.id,
+          title: v.title,
+          artist: v.channel ?? v.uploader ?? '',
           thumbnail: `https://img.youtube.com/vi/${v.id}/mqdefault.jpg`,
-          duration:  v.duration ?? null,   // seconds, may be null for live
+          duration: v.duration ?? null, // seconds, may be null for live
         };
       })
       .filter(r => r.duration && r.duration < 600); // drop anything > 10 min
@@ -74,14 +81,15 @@ app.get('/search', async (req: Request, res: Response) => {
 // ─── Stream URL: returns a direct audio URL for TrackPlayer ──────────────────
 app.get('/stream-url', async (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
-  if (!videoId) return res.status(400).json({ error: 'Missing query param: videoId' });
+  if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
 
   try {
     const bin = ytDlpBin();
     const { stdout } = await run(
-     `${bin} ${cookiesFlag} --get-url --format bestaudio "https://www.youtube.com/watch?v=${videoId}"`
+      `${bin} ${cookiesFlag} ${proxyFlag} --get-url --format "bestaudio/best" --extractor-args "youtube:player_client=web_creator" "https://www.youtube.com/watch?v=${videoId}"`
     );
-    const url = stdout.trim().split('\n')[0]; // take first URL if multiple
+    const url = stdout.trim().split('\n')[0];
+    if (!url) throw new Error('No stream URL returned');
     res.json({ url });
   } catch (err) {
     console.error(err);
