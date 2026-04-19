@@ -1,4 +1,4 @@
-import { StyleSheet, Dimensions } from 'react-native';
+import { StyleSheet, Dimensions, Platform } from 'react-native';
 import { COLORS } from './constants';
 
 const { width } = Dimensions.get('window');
@@ -45,13 +45,19 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     flexGrow: 1,
     paddingVertical: 8,
-    transform: [{ translateY: -14 }],
+    ...Platform.select({
+      ios: {},
+      default: { transform: [{ translateY: -14 }] },
+    }),
   },
   playerControlsBlock: {
     width: '100%',
     alignItems: 'stretch',
     gap: 12,
-    transform: [{ translateY: -14 }],
+    ...Platform.select({
+      ios: {},
+      default: { transform: [{ translateY: -14 }] },
+    }),
   },
 
   // ── Cards ─────────────────────────────────────────────────
@@ -74,6 +80,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    ...Platform.select({
+      ios: { paddingTop: 10 },
+      default: {},
+    }),
   },
   headerTitle: {
     fontSize: 18,

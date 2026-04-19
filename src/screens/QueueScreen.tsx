@@ -9,6 +9,7 @@ import {
   Animated,
   Alert,
   GestureResponderEvent,
+  Platform,
 } from 'react-native';
 import TrackPlayer, { Track, useActiveTrack } from 'react-native-track-player';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -390,7 +391,8 @@ const qs = StyleSheet.create({
   header: {
     backgroundColor: COLORS.background,
     paddingHorizontal: 24,
-    paddingTop: 15,
+    // Match `screenContainer` top padding (24) on iOS; Queue doesn’t use that wrapper
+    paddingTop: Platform.select({ ios: 24, default: 15 }),
     paddingBottom: 6,
     marginTop: 15,
     marginHorizontal: 16,

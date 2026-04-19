@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
   Easing,
+  Platform,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
@@ -20,6 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/FontAwesome5';
 import { DEFAULT_COVER_URI, COLORS } from '../constants';
 import type { RootStackParamList } from '../navigation/types';
+import { hapticHeavy } from '../utils/haptics';
 
 // Ring geometry
 const SIZE = 58;           // total SVG + button size
@@ -70,6 +72,7 @@ export default function MiniPlayer() {
   });
 
   const togglePlayback = async () => {
+    hapticHeavy();
     if (isPlaying) { await TrackPlayer.pause(); } else { await TrackPlayer.play(); }
   };
 
@@ -187,7 +190,8 @@ const mp = StyleSheet.create({
     borderRadius: PILL_H / 2,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    // iOS clips children to the pill curve; ring + stroke need extra inset than Android
+    paddingHorizontal: Platform.select({ ios: 14, default: 10 }),
     gap: 10,
     shadowColor: '#888',
     shadowOffset: { width: 0, height: 6 },
@@ -221,6 +225,10 @@ const mp = StyleSheet.create({
     height: SIZE,
     justifyContent: 'center',
     alignItems: 'center',
+    ...Platform.select({
+      ios: { transform: [{ translateX: -20 }] },
+      default: {},
+    }),
   },
   buttonFace: {
     width: INNER_BTN,
