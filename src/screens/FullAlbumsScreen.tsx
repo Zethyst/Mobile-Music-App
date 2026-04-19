@@ -19,7 +19,6 @@ import AlbumCardFooterBlur from '../components/AlbumCardFooterBlur';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullAlbums'>;
 
-const MINI_PLAYER_PAD = 96;
 /** Horizontal space outside the grid: scroll pad (4×2) + screen margin (16×2) + screen padding (24×2). */
 const GRID_OUTSIDE_H = 8 + 32 + 48;
 const COLUMN_GAP = 12;
@@ -39,11 +38,7 @@ export default function FullAlbumsScreen({ navigation }: Props) {
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingBottom: MINI_PLAYER_PAD,
-          paddingHorizontal: 0,
-          paddingTop: 12,
-        }}>
+        contentContainerStyle={styles.libraryStackScrollContent}>
         <View style={styles.screenContainer}>
           <View style={styles.headerRow}>
             <TouchableOpacity
@@ -58,7 +53,7 @@ export default function FullAlbumsScreen({ navigation }: Props) {
           </View>
 
           <View
-            style={[styles.albumGrid, { marginTop: 8 }]}
+            style={styles.albumGrid}
             onLayout={({ nativeEvent }) =>
               setGridInnerWidth(nativeEvent.layout.width)
             }>

@@ -89,19 +89,19 @@ export default function MusicPlayer({ navigation }: Props) {
 
       if (isHorizontal) {
         if (translationX < 0) {
-          // Left swipe → Library
-          navigation.navigate('Library');
-        } else {
-          // Right swipe → Search
+          // Left swipe → Search
           navigation.navigate('Search');
+        } else {
+          // Right swipe → Library
+          navigation.navigate('Library');
         }
       } else if (isVertical) {
         if (translationY < 0) {
-          // Up swipe → Queue
-          navigation.navigate('Queue');
-        } else {
-          // Down swipe → Lyrics
+          // Up swipe → Lyrics
           navigation.navigate('Lyrics');
+        } else {
+          // Down swipe → Queue
+          navigation.navigate('Queue');
         }
       }
     },

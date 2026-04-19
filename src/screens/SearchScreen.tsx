@@ -14,8 +14,6 @@ import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
 
-const MINI_PLAYER_PAD = 96;
-
 /** Library track IDs are numeric strings — YouTube video IDs are longer alphanumeric strings. */
 const LIBRARY_IDS = new Set(libraryTracks.map(t => t.id));
 
@@ -130,10 +128,7 @@ export default function SearchScreen({ navigation }: Props) {
         style={styles.container}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingBottom: MINI_PLAYER_PAD,
-          paddingTop: 12,
-        }}>
+        contentContainerStyle={styles.libraryStackScrollContent}>
         <View style={styles.screenContainer}>
 
           {/* Header */}

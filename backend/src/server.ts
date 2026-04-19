@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { exec } from 'child_process';
@@ -7,23 +9,40 @@ const app  = express();
 const run  = promisify(exec);
 const PORT = process.env.PORT || 8000;
 
+/** Render build drops the binary in `backend/bin/`; locally use PATH or YT_DLP_PATH. */
+function ytDlpBin(): string {
+  if (process.env.YT_DLP_PATH) {
+    return process.env.YT_DLP_PATH;
+  }
+  const bundled = path.join(__dirname, '..', 'bin', 'yt-dlp');
+  if (fs.existsSync(bundled)) {
+    return bundled;
+  }
+  return 'yt-dlp';
+}
+
 app.use(cors());
 app.use(express.json());
 
 // ─── Health check ────────────────────────────────────────────────────────────
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok' });
+app.get('/health', (_req, res) => {
+  res.json({ 
+    status: 'ok',
+    __dirname,
+    ytDlpBin: ytDlpBin(),
+    binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp'))
+  });
 });
-
 // ─── Search: returns title/artist/thumbnail list ──────────────────────────────
 app.get('/search', async (req: Request, res: Response) => {
   const q = req.query.q as string;
   if (!q) return res.status(400).json({ error: 'Missing query param: q' });
 
   try {
+    const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-      `yt-dlp --dump-json --flat-playlist --playlist-end 8 "ytsearch8:${q} audio"`
+      `${bin} --dump-json --flat-playlist --playlist-end 8 "ytsearch8:${q} audio"`
     );
 
     const results = stdout
@@ -55,9 +74,10 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   if (!videoId) return res.status(400).json({ error: 'Missing query param: videoId' });
 
   try {
+    const bin = ytDlpBin();
     const { stdout } = await run(
       // bestaudio gives m4a/webm — both stream fine in react-native-track-player
-      `yt-dlp --get-url --format bestaudio "https://www.youtube.com/watch?v=${videoId}"`
+      `${bin} --get-url --format bestaudio "https://www.youtube.com/watch?v=${videoId}"`
     );
     const url = stdout.trim().split('\n')[0]; // take first URL if multiple
     res.json({ url });

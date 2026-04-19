@@ -233,7 +233,7 @@ export const tracks = [
     const m = TRACK_META[n];
     return {
       id: String(n),
-      url: assetUri(SONG_MODULE[n]),
+      url: SONG_MODULE[n] as unknown as string,
       title: m.title,
       artist: m.artist,
       album: m.album,
@@ -243,7 +243,7 @@ export const tracks = [
   }),
   {
     id: 'blank',
-    url: assetUri(blankSound),
+    url: blankSound as unknown as string,
     title: 'Blank sound',
     artist: 'Local library',
     album: 'Utilities',

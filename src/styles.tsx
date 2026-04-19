@@ -30,6 +30,11 @@ export const styles = StyleSheet.create({
   playerScrollContent: {
     flexGrow: 1,
   },
+  /** Library-style stack screens: same horizontal inset as `screenContainer` only (no extra top pad). */
+  libraryStackScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 96,
+  },
   playerScreenLayout: {
     flex: 1,
     justifyContent: 'space-between',
@@ -40,11 +45,13 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     flexGrow: 1,
     paddingVertical: 8,
+    transform: [{ translateY: -14 }],
   },
   playerControlsBlock: {
     width: '100%',
     alignItems: 'stretch',
     gap: 12,
+    transform: [{ translateY: -14 }],
   },
 
   // ── Cards ─────────────────────────────────────────────────
@@ -348,7 +355,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   albumCoverImage: {
-      ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },

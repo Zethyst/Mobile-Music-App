@@ -17,8 +17,6 @@ import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullSongs'>;
 
-const MINI_PLAYER_PAD = 96;
-
 export default function FullSongsScreen({ navigation }: Props) {
   const activeTrack = useActiveTrack();
 
@@ -29,11 +27,7 @@ export default function FullSongsScreen({ navigation }: Props) {
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingBottom: MINI_PLAYER_PAD,
-          paddingHorizontal: 16,
-          paddingTop: 12,
-        }}>
+        contentContainerStyle={styles.libraryStackScrollContent}>
         <View style={styles.screenContainer}>
           <View style={styles.headerRow}>
             <TouchableOpacity
@@ -47,9 +41,11 @@ export default function FullSongsScreen({ navigation }: Props) {
             <View style={{ width: 20 }} />
           </View>
 
-          <View style={[styles.sectionTitleRow, { marginTop: 8, marginBottom: 8 }]}>
-            <Icon name="list-ul" size={16} color={COLORS.text} />
-            <Text style={styles.sectionTitle}>All songs</Text>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Icon name="list-ul" size={16} color={COLORS.text} />
+              <Text style={styles.sectionTitle}>All songs</Text>
+            </View>
           </View>
 
           <View style={styles.trackList}>
