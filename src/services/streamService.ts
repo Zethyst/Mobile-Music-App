@@ -17,12 +17,13 @@ export type SearchResult = {
   thumbnail: string;
   duration:  number | null;
 };
-
+ 
 export async function searchYouTube(query: string): Promise<SearchResult[]> {
   const res  = await fetch(`${BACKEND}/search?q=${encodeURIComponent(query)}`);
   const data = await res.json() as { results: SearchResult[] };
   return data.results ?? [];
 }
+
 
 export type StreamInfo = {
   url: string;

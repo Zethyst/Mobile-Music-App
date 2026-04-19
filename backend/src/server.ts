@@ -38,6 +38,55 @@ function ytDlpBin(): string {
 app.use(cors());
 app.use(express.json());
 
+// ─── Prefetch generation — incremented on every new search ───────────────────
+// The background loop checks this before each batch so stale searches stop
+// resolving as soon as a new search supersedes them.
+let prefetchGen = 0;
+
+// ─── Stream URL cache ─────────────────────────────────────────────────────────
+// YouTube signed URLs are valid for ~6 h. We cache for 5 h to stay safe.
+const CACHE_TTL_MS = 5 * 60 * 60 * 1000;
+const STREAM_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  'Referer': 'https://www.youtube.com/',
+  'Origin': 'https://www.youtube.com',
+};
+
+type CacheEntry = { url: string; resolvedAt: number };
+const streamUrlCache = new Map<string, CacheEntry>();
+/** In-flight promises — avoids duplicate yt-dlp processes for the same videoId */
+const inflight = new Map<string, Promise<string>>();
+
+async function resolveStreamUrl(videoId: string): Promise<string> {
+  const cached = streamUrlCache.get(videoId);
+  if (cached && Date.now() - cached.resolvedAt < CACHE_TTL_MS) {
+    return cached.url;
+  }
+
+  const existing = inflight.get(videoId);
+  if (existing) return existing;
+
+  const bin = ytDlpBin();
+  const promise = run(
+    `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag}` +
+    ` --get-url --no-warnings` +
+    ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best"` +
+    ` --extractor-args "youtube:player_client=ios,mweb,tv"` +
+    ` "https://www.youtube.com/watch?v=${videoId}"`
+  ).then(({ stdout }) => {
+    const url = stdout.trim().split('\n')[0];
+    if (!url) throw new Error('yt-dlp returned no URL');
+    streamUrlCache.set(videoId, { url, resolvedAt: Date.now() });
+    return url;
+  }).finally(() => {
+    inflight.delete(videoId);
+  });
+
+  inflight.set(videoId, promise);
+  return promise;
+}
+
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({
@@ -45,8 +94,10 @@ app.get('/health', (_req, res) => {
     __dirname,
     ytDlpBin: ytDlpBin(),
     binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp')),
+    cachedUrls: streamUrlCache.size,
   });
 });
+
 // ─── Search: returns title/artist/thumbnail list ──────────────────────────────
 app.get('/search', async (req: Request, res: Response) => {
   const q = req.query.q as string;
@@ -56,7 +107,7 @@ app.get('/search', async (req: Request, res: Response) => {
     const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --dump-json --flat-playlist --playlist-end 8 --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
+      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --dump-json --flat-playlist --playlist-end 8 --no-warnings --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
     );
 
     const results = stdout
@@ -70,41 +121,39 @@ app.get('/search', async (req: Request, res: Response) => {
           title: v.title,
           artist: v.channel ?? v.uploader ?? '',
           thumbnail: `https://img.youtube.com/vi/${v.id}/mqdefault.jpg`,
-          duration: v.duration ?? null, // seconds, may be null for live
+          duration: v.duration ?? null,
         };
       })
-      .filter(r => r.duration && r.duration < 600); // drop anything > 10 min
+      .filter(r => r.duration && r.duration < 600);
 
     res.json({ results });
+
+    // Pre-resolve stream URLs in the background.
+    // - Max 3 concurrent yt-dlp processes per batch to keep the server responsive.
+    // - Checks `gen` before each batch: if a newer search has arrived the loop
+    //   exits immediately, so stale results stop consuming resources.
+    const ids = results.map(r => r.videoId);
+    const gen = ++prefetchGen;
+    (async () => {
+      for (let i = 0; i < ids.length; i += 3) {
+        if (prefetchGen !== gen) break;
+        await Promise.allSettled(ids.slice(i, i + 3).map(id => resolveStreamUrl(id)));
+      }
+    })();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Search failed' });
   }
 });
 
-// ─── Stream URL: returns a CDN URL + headers for TrackPlayer to stream directly
-// ExoPlayer streams straight from YouTube's CDN; no bandwidth goes through Render.
-// Headers (User-Agent, Referer) are attached to the track so ExoPlayer sends them.
+// ─── Stream URL: returns a CDN URL + headers for TrackPlayer ─────────────────
 app.get('/stream-url', async (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
   if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
 
   try {
-    const bin = ytDlpBin();
-    const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --get-url --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best" --extractor-args "youtube:player_client=tv" "https://www.youtube.com/watch?v=${videoId}"`
-    );
-    const url = stdout.trim().split('\n')[0];
-    if (!url) throw new Error('No stream URL returned');
-    res.json({
-      url,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        'Referer': 'https://www.youtube.com/',
-        'Origin': 'https://www.youtube.com',
-      },
-    });
+    const url = await resolveStreamUrl(videoId);
+    res.json({ url, headers: STREAM_HEADERS });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not get stream URL' });
