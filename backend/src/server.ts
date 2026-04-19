@@ -18,6 +18,9 @@ const cookiesFlag = fs.existsSync(cookiesPath)
   : '';
 const PROXY = process.env.YTDLP_PROXY ?? ''; // e.g. "http://user:pass@host:port"
 const proxyFlag = PROXY ? `--proxy "${PROXY}"` : '';
+const jsRuntimeFlag = process.env.YTDLP_JS_RUNTIME 
+  ? `--js-runtimes ${process.env.YTDLP_JS_RUNTIME}` 
+  : '';
 
 /** Render build drops the binary in `backend/bin/`; locally use PATH or YT_DLP_PATH. */
 function ytDlpBin(): string {
@@ -52,7 +55,7 @@ app.get('/search', async (req: Request, res: Response) => {
     const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} --dump-json --flat-playlist --playlist-end 8 --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
+      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --dump-json --flat-playlist --playlist-end 8 --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
     );
 
     const results = stdout
@@ -86,7 +89,7 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   try {
     const bin = ytDlpBin();
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} --get-url --format "bestaudio/best" --extractor-args "youtube:player_client=tv" "https://www.youtube.com/watch?v=${videoId}"`
+      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --get-url --format "bestaudio/best" --extractor-args "youtube:player_client=tv" "https://www.youtube.com/watch?v=${videoId}"`
     );
     const url = stdout.trim().split('\n')[0];
     if (!url) throw new Error('No stream URL returned');

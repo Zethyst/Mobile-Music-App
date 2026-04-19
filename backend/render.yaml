@@ -8,10 +8,11 @@ services:
       chmod a+rx bin/yt-dlp
       npm install
       npm run build
-      # Install Node.js as JS runtime for yt-dlp
     startCommand: npm start
     envVars:
       - key: PORT
         value: 3000
       - key: YTDLP_PROXY
         value: http://njykdqoc:4802hockovky@198.23.239.134:6540
+      - key: YTDLP_JS_RUNTIME
+        value: node
