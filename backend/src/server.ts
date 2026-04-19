@@ -70,7 +70,7 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
   const bin = ytDlpBin();
   const promise = run(
     `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag}` +
-    ` --get-url --no-warnings` +
+    ` --get-url --no-warnings --no-cache-dir` +
     ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best"` +
     ` --extractor-args "youtube:player_client=ios,mweb,tv"` +
     ` "https://www.youtube.com/watch?v=${videoId}"`
@@ -107,7 +107,7 @@ app.get('/search', async (req: Request, res: Response) => {
     const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --dump-json --flat-playlist --playlist-end 8 --no-warnings --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
+      `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag} --dump-json --flat-playlist --playlist-end 8 --no-warnings --no-cache-dir --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
     );
 
     const results = stdout
@@ -128,16 +128,17 @@ app.get('/search', async (req: Request, res: Response) => {
 
     res.json({ results });
 
-    // Pre-resolve stream URLs in the background.
-    // - Max 3 concurrent yt-dlp processes per batch to keep the server responsive.
-    // - Checks `gen` before each batch: if a newer search has arrived the loop
-    //   exits immediately, so stale results stop consuming resources.
-    const ids = results.map(r => r.videoId);
+    // Pre-resolve stream URLs sequentially in the background.
+    // Only the top 3 results are prefetched — the user almost always taps one
+    // of the first few. Sequential (1 at a time) keeps peak memory well under
+    // Render's 512 MB limit: at most 2 yt-dlp processes alive at once
+    // (1 prefetch + 1 real user request).
+    const ids = results.slice(0, 3).map(r => r.videoId);
     const gen = ++prefetchGen;
     (async () => {
-      for (let i = 0; i < ids.length; i += 3) {
+      for (const id of ids) {
         if (prefetchGen !== gen) break;
-        await Promise.allSettled(ids.slice(i, i + 3).map(id => resolveStreamUrl(id)));
+        await resolveStreamUrl(id).catch(() => {});
       }
     })();
   } catch (err) {
