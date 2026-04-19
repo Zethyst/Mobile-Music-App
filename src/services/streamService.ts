@@ -1,9 +1,9 @@
 // Change this to your Render URL when deployed
-const BACKEND = __DEV__
-  ? 'http://10.0.2.2:8000'           // Android emulator → host machine (use LAN IP for a real device e.g. http://192.168.x.x:8000)
-  : 'https://mobile-music-app.onrender.com';
+// const BACKEND = __DEV__
+//   ? 'http://10.0.2.2:8000'           // Android emulator → host machine (use LAN IP for a real device e.g. http://192.168.x.x:8000)
+//   : 'https://mobile-music-app.onrender.com';
 
-// const BACKEND = 'https://mobile-music-app.onrender.com';
+const BACKEND = 'https://mobile-music-app.onrender.com';
 
 /** Triggers GET /health so cold hosts (e.g. Render) spin up; failures are ignored. */
 export function pingHealthCheck(): void {

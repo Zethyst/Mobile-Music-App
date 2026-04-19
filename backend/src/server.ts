@@ -52,7 +52,7 @@ app.get('/search', async (req: Request, res: Response) => {
     const bin = ytDlpBin();
     // Returns JSON lines — one object per result
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} --dump-json --flat-playlist --playlist-end 8 --extractor-args "youtube:player_client=ios" "ytsearch8:${q} audio"`,
+      `${bin} ${cookiesFlag} ${proxyFlag} --dump-json --flat-playlist --playlist-end 8 --extractor-args "youtube:player_client=tv" "ytsearch8:${q} audio"`
     );
 
     const results = stdout
@@ -86,7 +86,7 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   try {
     const bin = ytDlpBin();
     const { stdout } = await run(
-      `${bin} ${cookiesFlag} ${proxyFlag} --get-url --format "bestaudio/best" --extractor-args "youtube:player_client=web_creator" "https://www.youtube.com/watch?v=${videoId}"`
+      `${bin} ${cookiesFlag} ${proxyFlag} --get-url --format "bestaudio/best" --extractor-args "youtube:player_client=tv" "https://www.youtube.com/watch?v=${videoId}"`
     );
     const url = stdout.trim().split('\n')[0];
     if (!url) throw new Error('No stream URL returned');
