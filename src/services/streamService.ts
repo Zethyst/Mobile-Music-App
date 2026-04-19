@@ -24,9 +24,17 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
   return data.results ?? [];
 }
 
-/** Returns the server-proxied stream URL for a YouTube video.
- *  ExoPlayer streams from this URL; the server fetches from YouTube using the
- *  same IP that resolved the CDN URL, avoiding IP-mismatch 403s on Render. */
-export function getStreamUrl(videoId: string): string {
-  return `${BACKEND}/stream?videoId=${encodeURIComponent(videoId)}`;
+export type StreamInfo = {
+  url: string;
+  headers: Record<string, string>;
+};
+
+/** Fetches a YouTube CDN URL + required headers from the backend.
+ *  TrackPlayer attaches the headers so ExoPlayer sends them when streaming. */
+export async function getStreamUrl(videoId: string): Promise<StreamInfo | null> {
+  const res  = await fetch(`${BACKEND}/stream-url?videoId=${encodeURIComponent(videoId)}`);
+  if (!res.ok) return null;
+  const data = await res.json() as { url?: string; headers?: Record<string, string> };
+  if (!data.url) return null;
+  return { url: data.url, headers: data.headers ?? {} };
 }

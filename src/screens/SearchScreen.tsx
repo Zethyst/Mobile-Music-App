@@ -6,7 +6,7 @@ import {
 import TrackPlayer, { useActiveTrack } from 'react-native-track-player';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/FontAwesome5';
-import { searchYouTube, getStreamUrl, SearchResult } from '../services/streamService';
+import { searchYouTube, getStreamUrl, SearchResult, StreamInfo } from '../services/streamService';
 import { COLORS, tracks as libraryTracks } from '../constants';
 import { styles } from '../styles';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
@@ -61,9 +61,10 @@ export default function SearchScreen({ navigation }: Props) {
     }, 2000);
   }, []);
 
-  const buildTrack = (item: SearchResult, url: string) => ({
+  const buildTrack = (item: SearchResult, stream: StreamInfo) => ({
     id:       item.videoId,
-    url,
+    url:      stream.url,
+    headers:  stream.headers,
     title:    item.title,
     artist:   item.artist,
     artwork:  item.thumbnail,
@@ -74,9 +75,10 @@ export default function SearchScreen({ navigation }: Props) {
   const handlePlayNow = async (item: SearchResult) => {
     setLoadingId(item.videoId);
     try {
-      const url = getStreamUrl(item.videoId);
+      const stream = await getStreamUrl(item.videoId);
+      if (!stream) { setTimeout(() => Alert.alert('Could not get stream URL'), 0); return; }
       await TrackPlayer.reset();
-      await TrackPlayer.add(buildTrack(item, url));
+      await TrackPlayer.add(buildTrack(item, stream));
       await TrackPlayer.play();
     } catch {
       setTimeout(() => Alert.alert('Playback error', 'Could not load the track.'), 0);
@@ -93,8 +95,9 @@ export default function SearchScreen({ navigation }: Props) {
   const handleAddToQueue = async (item: SearchResult) => {
     setLoadingId(item.videoId);
     try {
-      const url = getStreamUrl(item.videoId);
-      const track = buildTrack(item, url);
+      const stream = await getStreamUrl(item.videoId);
+      if (!stream) { setTimeout(() => Alert.alert('Could not get stream URL'), 0); return; }
+      const track = buildTrack(item, stream);
       const queue = await TrackPlayer.getQueue();
       if (isLibraryOrEmptyQueue(queue)) {
         await TrackPlayer.reset();
