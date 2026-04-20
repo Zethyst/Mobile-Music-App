@@ -148,9 +148,16 @@ app.get('/search', async (req: Request, res: Response) => {
 });
 
 // ─── Stream URL: returns a CDN URL + headers for TrackPlayer ─────────────────
+// Pass ?bust=1 to force-evict the cached URL and re-resolve via yt-dlp.
+// The app sends this when a PlaybackError signals the cached URL has expired.
 app.get('/stream-url', async (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
   if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
+
+  if (req.query.bust === '1') {
+    streamUrlCache.delete(videoId);
+    inflight.delete(videoId);
+  }
 
   try {
     const url = await resolveStreamUrl(videoId);

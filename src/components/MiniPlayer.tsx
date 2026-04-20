@@ -17,9 +17,10 @@ import TrackPlayer, {
   State,
 } from 'react-native-track-player';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/FontAwesome5';
-import { DEFAULT_COVER_URI, COLORS } from '../constants';
+import { DEFAULT_COVER_URI, COLORS, resolveTrackArtworkUri } from '../constants';
 import type { RootStackParamList } from '../navigation/types';
 import { hapticHeavy } from '../utils/haptics';
 
@@ -33,6 +34,7 @@ type MiniNav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MiniPlayer() {
   const navigation = useNavigation<MiniNav>();
+  const insets = useSafeAreaInsets();
   const track = useActiveTrack();
   const playbackState = usePlaybackState();
   const { position, duration } = useProgress(500);
@@ -81,7 +83,11 @@ export default function MiniPlayer() {
   const dashOffset = CIRCUMFERENCE * (1 - progress);
 
   return (
-    <View style={mp.wrapper}>
+    <View
+      style={[
+        mp.wrapper,
+        Platform.OS === 'android' && { bottom: 24 + insets.bottom },
+      ]}>
       <TouchableOpacity
         activeOpacity={0.92}
         style={mp.pillOuter}
@@ -96,7 +102,7 @@ export default function MiniPlayer() {
 
         {/* Rotating disc artwork */}
         <Animated.Image
-          source={{ uri: (track?.artwork as string | undefined) || DEFAULT_COVER_URI }}
+          source={{ uri: resolveTrackArtworkUri(track) ?? DEFAULT_COVER_URI }}
           style={[mp.artwork, { transform: [{ rotate: artworkRotate }] }]}
         />
 

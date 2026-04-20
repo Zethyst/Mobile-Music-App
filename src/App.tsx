@@ -308,7 +308,14 @@ export default function App() {
             initialRouteName="Player"
             screenOptions={{ headerShown: false }}>
             <Stack.Screen name="Player" component={MusicPlayer} />
-            <Stack.Screen name="Library" component={MusicLibrary} />
+            <Stack.Screen
+              name="Library"
+              component={MusicLibrary}
+              options={{
+                // Right-edge swipe opens Library — match “revealed from the left” instead of default push-from-right
+                animation: 'slide_from_left',
+              }}
+            />
             <Stack.Screen name="FullAlbums" component={FullAlbumsScreen} />
             <Stack.Screen name="FullSongs" component={FullSongsScreen} />
             <Stack.Screen name="Lyrics" component={LyricsScreen} />

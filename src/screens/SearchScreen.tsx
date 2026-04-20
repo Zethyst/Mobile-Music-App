@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TextInput, ScrollView, TouchableOpacity,
-  Image, ActivityIndicator, Alert,
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  StyleSheet,
 } from 'react-native';
 import TrackPlayer, { useActiveTrack } from 'react-native-track-player';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -11,6 +19,7 @@ import { COLORS, tracks as libraryTracks } from '../constants';
 import { styles } from '../styles';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
 import BackSwipeContainer from '../components/BackSwipeContainer';
+import StreamRecoveryBanner from '../components/StreamRecoveryBanner';
 import type { RootStackParamList } from '../navigation/types';
 import {
   hapticLight,
@@ -43,6 +52,7 @@ export default function SearchScreen({ navigation }: Props) {
   useEffect(() => { cache.results = results; }, [results]);
 
   const handleSearch = async () => {
+    Keyboard.dismiss();
     if (!query.trim()) return;
     hapticLight();
     setLoading(true);
@@ -134,6 +144,7 @@ export default function SearchScreen({ navigation }: Props) {
   return (
     <ScreenWithMiniPlayer>
       <BackSwipeContainer onBack={() => navigation.goBack()}>
+      <View style={searchScreenStyles.root}>
       <ScrollView
         style={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -251,10 +262,16 @@ export default function SearchScreen({ navigation }: Props) {
 
         </View>
       </ScrollView>
+      <StreamRecoveryBanner />
+      </View>
       </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
 }
+
+const searchScreenStyles = StyleSheet.create({
+  root: { flex: 1 },
+});
 
 // Local styles that extend the shared sheet
 const searchRow: object = {

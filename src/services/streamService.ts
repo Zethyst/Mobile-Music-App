@@ -31,9 +31,15 @@ export type StreamInfo = {
 };
 
 /** Fetches a YouTube CDN URL + required headers from the backend.
- *  TrackPlayer attaches the headers so ExoPlayer sends them when streaming. */
-export async function getStreamUrl(videoId: string): Promise<StreamInfo | null> {
-  const res  = await fetch(`${BACKEND}/stream-url?videoId=${encodeURIComponent(videoId)}`);
+ *  TrackPlayer attaches the headers so ExoPlayer sends them when streaming.
+ *  Pass `forceRefresh: true` to bust the server-side cache (use after a PlaybackError). */
+export async function getStreamUrl(
+  videoId: string,
+  forceRefresh = false,
+): Promise<StreamInfo | null> {
+  const params = new URLSearchParams({ videoId });
+  if (forceRefresh) params.set('bust', '1');
+  const res = await fetch(`${BACKEND}/stream-url?${params}`);
   if (!res.ok) return null;
   const data = await res.json() as { url?: string; headers?: Record<string, string> };
   if (!data.url) return null;

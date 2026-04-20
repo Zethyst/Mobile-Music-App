@@ -252,6 +252,25 @@ export const tracks = [
   },
 ];
 
+/**
+ * RNTP on iOS often omits `artwork` on the active track until the queue changes.
+ * Resolve bundled cover from `tracks` by library id so the first song shows art on cold start.
+ */
+export function resolveTrackArtworkUri(
+  track: { id?: string | number; artwork?: unknown } | null | undefined,
+): string | undefined {
+  if (!track) return undefined;
+  const a = track.artwork;
+  if (typeof a === 'string' && a.trim().length > 0) return a;
+  const id = track.id != null ? String(track.id) : '';
+  if (/^\d+$/.test(id) || id === 'blank') {
+    const lib = tracks.find(t => String(t.id) === id);
+    const u = lib?.artwork;
+    if (typeof u === 'string' && u.length > 0) return u;
+  }
+  return undefined;
+}
+
 export const COLORS = {
   background: '#f0eef6',
   card: '#f8f4fc',

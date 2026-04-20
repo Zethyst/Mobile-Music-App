@@ -20,7 +20,8 @@ import SongInfo from '../components/SongInfo';
 import SongSlider from '../components/SongSlider';
 import ControlCenter from '../components/ControlCenter';
 import ArtworkWithGlow from '../components/ArtworkWithGlow';
-import { COLORS } from '../constants';
+import StreamRecoveryBanner from '../components/StreamRecoveryBanner';
+import { COLORS, resolveTrackArtworkUri } from '../constants';
 import { styles } from '../styles';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -192,7 +193,7 @@ export default function MusicPlayer({ navigation }: Props) {
             <View style={styles.playerArtworkSongBlock}>
               <View style={styles.artworkContainer}>
                 <ArtworkWithGlow
-                  artworkUri={track?.artwork as string | undefined}
+                  artworkUri={resolveTrackArtworkUri(track)}
                   imageRotate={rotate}
                 />
               </View>
@@ -216,6 +217,8 @@ export default function MusicPlayer({ navigation }: Props) {
           </View>
         </View>
       </PanGestureHandler>
+
+      <StreamRecoveryBanner />
     </GestureHandlerRootView>
   );
 }
