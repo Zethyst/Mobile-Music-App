@@ -181,8 +181,13 @@ export default function SearchScreen({ navigation }: Props) {
         0,
       );
     } catch (e) {
-      console.error('[Download] handleDownload', e);
-      setTimeout(() => Alert.alert('Download failed', 'Could not save the file. Try again.'), 0);
+      const isFormatError = e instanceof Error && e.message === 'FORMAT_UNAVAILABLE';
+      setTimeout(() => Alert.alert(
+        'Download failed',
+        isFormatError
+          ? 'This track is not available for download.'
+          : 'Could not save the file. Try again.',
+      ), 0);
     } finally {
       setDownloadLoadingId(null);
     }

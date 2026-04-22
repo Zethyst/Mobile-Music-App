@@ -132,6 +132,16 @@ export async function downloadTrackToDevice(item: DownloadRequest): Promise<Down
     throw new Error('File missing after download');
   }
 
+  // yt-dlp may exit with code 1 but the server has already sent HTTP 200 (headers
+  // are flushed before the download starts). Detect a failed/empty download by
+  // checking the file size — a valid audio file is always several hundred KB.
+  const MIN_VALID_BYTES = 50 * 1024; // 50 KB
+  if (result.bytesWritten < MIN_VALID_BYTES) {
+    await RNFS.unlink(filePath).catch(() => {});
+    emitProgress(item.videoId, 0);
+    throw new Error('FORMAT_UNAVAILABLE');
+  }
+
   const localUri = filePath.startsWith('file:') ? filePath : `file://${filePath}`;
 
   const track: DownloadedTrack = {
