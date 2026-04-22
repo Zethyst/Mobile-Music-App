@@ -85,17 +85,19 @@ app.get('/health', async (_req, res) => {
 /** Debug endpoint: list available formats for a video (helps diagnose download failures). */
 app.get('/debug-formats', async (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
+  const noCookies = req.query.noCookies === '1';
   if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
 
   try {
     const bin = ytDlpBin();
     const proxy = process.env.YTDLP_PROXY || '';
     const proxyArg = proxy ? `--proxy "${proxy}"` : '';
+    const cookieArg = noCookies ? '' : cookiesFlag;
     const { stdout, stderr } = await run(
-      `${bin} ${cookiesFlag} ${proxyArg} --no-warnings --no-cache-dir --list-formats "https://www.youtube.com/watch?v=${videoId}"`,
+      `${bin} ${cookieArg} ${proxyArg} --no-warnings --no-cache-dir --list-formats "https://www.youtube.com/watch?v=${videoId}"`,
       { timeout: 60000 },
     );
-    res.json({ videoId, proxyUsed: !!proxy, formats: stdout, stderr });
+    res.json({ videoId, proxyUsed: !!proxy, cookiesUsed: !noCookies, formats: stdout, stderr });
   } catch (err: any) {
     res.status(500).json({
       videoId,
