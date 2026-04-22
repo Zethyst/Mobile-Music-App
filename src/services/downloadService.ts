@@ -4,22 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const DOWNLOAD_PROGRESS_EVENT = 'musicapp_download_progress';
 
-const LOG = '[Download]';
-// const BACKEND = 'https://mobile-music-app.onrender.com';
-const BACKEND = __DEV__
-  ? 'http://10.0.2.2:8000'           // Android emulator → host machine (use LAN IP for a real device e.g. http://192.168.x.x:8000)
-  : 'https://mobile-music-app.onrender.com';
+const BACKEND = 'https://mobile-music-app.onrender.com';
+// const BACKEND = __DEV__
+//   ? 'http://10.0.2.2:8000' // Android emulator → host machine (use LAN IP for a real device e.g. http://192.168.x.x:8000)
+//   : 'https://mobile-music-app.onrender.com';
 
 const DOWNLOADS_DIR = `${RNFS.DocumentDirectoryPath}/downloads`;
 const METADATA_KEY = 'downloaded_tracks_v1';
-
-function log(...args: unknown[]) {
-  console.log(LOG, ...args);
-}
-
-function logErr(...args: unknown[]) {
-  console.error(LOG, ...args);
-}
 
 export type DownloadRequest = {
   videoId: string;
@@ -92,126 +83,68 @@ export async function deleteDownload(videoId: string): Promise<boolean> {
   }
 }
 
-/** When HTTP status is an error, RNFS may have written a JSON error body to the file. */
-async function readFileHeadForLog(path: string, maxBytes = 400): Promise<string | null> {
-  try {
-    if (!(await RNFS.exists(path))) return null;
-    const st = await RNFS.stat(path);
-    const n = Math.min(maxBytes, st.size);
-    if (n <= 0) return '(empty file)';
-    return await RNFS.read(path, n, 0, 'utf8');
-  } catch (e) {
-    logErr('readFileHeadForLog failed', e);
-    return null;
-  }
-}
-
 /** Download audio via the backend proxy endpoint (avoids YouTube CDN header/expiry issues). */
 export async function downloadTrackToDevice(item: DownloadRequest): Promise<DownloadedTrack> {
   const filePath = `${DOWNLOADS_DIR}/${item.videoId}.m4a`;
   const downloadUrl = `${BACKEND}/download?videoId=${encodeURIComponent(item.videoId)}`;
 
-  log('start', {
-    videoId: item.videoId,
-    title: item.title,
-    documentsDir: RNFS.DocumentDirectoryPath,
-    downloadsDir: DOWNLOADS_DIR,
-    toFile: filePath,
-    fromUrl: downloadUrl,
+  await RNFS.mkdir(DOWNLOADS_DIR);
+
+  if (await RNFS.exists(filePath)) {
+    await RNFS.unlink(filePath);
+  }
+
+  emitProgress(item.videoId, 0);
+
+  const job = RNFS.downloadFile({
+    fromUrl:          downloadUrl,
+    toFile:           filePath,
+    background:       true,
+    progressDivider:  5,
+    discretionary:    false,
+    // yt-dlp may sleep (JS challenge + rate-limit) before the first byte.
+    connectionTimeout: 60000,
+    readTimeout:       120000,
+    progress: res => {
+      const { bytesWritten, contentLength } = res;
+      if (contentLength > 0) {
+        const pct = Math.min(99, Math.round((bytesWritten / contentLength) * 100));
+        emitProgress(item.videoId, pct);
+      }
+    },
   });
 
+  let result: { statusCode: number; bytesWritten: number };
   try {
-    await RNFS.mkdir(DOWNLOADS_DIR);
-    log('mkdir ok', DOWNLOADS_DIR);
-
-    if (await RNFS.exists(filePath)) {
-      await RNFS.unlink(filePath);
-      log('removed existing file', filePath);
-    }
-
-    emitProgress(item.videoId, 0);
-
-    const job = RNFS.downloadFile({
-      fromUrl:          downloadUrl,
-      toFile:           filePath,
-      background:       true,
-      progressDivider:  5,
-      discretionary:    false,
-      // yt-dlp may sleep up to ~10 s (JS challenge + rate-limit) before sending
-      // the first byte. Give the connection timeout generous headroom.
-      connectionTimeout: 60000,
-      readTimeout:       120000,
-      begin: res => {
-        log('RNFS begin', {
-          statusCode: res.statusCode,
-          contentLength: res.contentLength,
-          headers: res.headers,
-        });
-      },
-      progress: res => {
-        const { bytesWritten, contentLength } = res;
-        if (contentLength > 0) {
-          const pct = Math.min(99, Math.round((bytesWritten / contentLength) * 100));
-          emitProgress(item.videoId, pct);
-        }
-      },
-    });
-
-    let result: { statusCode: number; bytesWritten: number };
-    try {
-      result = await job.promise;
-    } catch (e) {
-      logErr('RNFS job.promise rejected', e);
-      emitProgress(item.videoId, 0);
-      throw e;
-    }
-
-    log('RNFS promise resolved', result);
-
-    if (result.statusCode !== 200 && result.statusCode !== 206) {
-      const snippet = await readFileHeadForLog(filePath);
-      logErr('non-OK HTTP', {
-        statusCode: result.statusCode,
-        bytesWritten: result.bytesWritten,
-        fileExists: await RNFS.exists(filePath),
-        responseBodyHead: snippet,
-      });
-      emitProgress(item.videoId, 0);
-      throw new Error(`Download failed (HTTP ${result.statusCode})`);
-    }
-
-    const exists = await RNFS.exists(filePath);
-    if (!exists) {
-      logErr('file missing after OK status', { result });
-      emitProgress(item.videoId, 0);
-      throw new Error('File missing after download');
-    }
-
-    const st = await RNFS.stat(filePath);
-    log('saved', { path: filePath, size: st.size });
-
-    const localUri = filePath.startsWith('file:') ? filePath : `file://${filePath}`;
-
-    const track: DownloadedTrack = {
-      videoId: item.videoId,
-      title: item.title,
-      artist: item.artist,
-      thumbnail: item.thumbnail,
-      duration: item.duration ?? 0,
-      localUri,
-      downloadedAt: new Date().toISOString(),
-    };
-
-    await saveMetadata(track);
-    emitProgress(item.videoId, 100);
-    log('complete', { videoId: item.videoId, localUri });
-    return track;
+    result = await job.promise;
   } catch (e) {
-    logErr('downloadTrackToDevice failed', {
-      videoId: item.videoId,
-      message: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined,
-    });
+    emitProgress(item.videoId, 0);
     throw e;
   }
+
+  if (result.statusCode !== 200 && result.statusCode !== 206) {
+    emitProgress(item.videoId, 0);
+    throw new Error(`Download failed (HTTP ${result.statusCode})`);
+  }
+
+  if (!(await RNFS.exists(filePath))) {
+    emitProgress(item.videoId, 0);
+    throw new Error('File missing after download');
+  }
+
+  const localUri = filePath.startsWith('file:') ? filePath : `file://${filePath}`;
+
+  const track: DownloadedTrack = {
+    videoId: item.videoId,
+    title: item.title,
+    artist: item.artist,
+    thumbnail: item.thumbnail,
+    duration: item.duration ?? 0,
+    localUri,
+    downloadedAt: new Date().toISOString(),
+  };
+
+  await saveMetadata(track);
+  emitProgress(item.videoId, 100);
+  return track;
 }

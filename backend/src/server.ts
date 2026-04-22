@@ -47,7 +47,7 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
   const promise = run(
     `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag}` +
     ` --get-url --no-warnings --no-cache-dir` +
-    ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best"` +
+    ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best"` +
     ` --extractor-args "youtube:player_client=ios,mweb,tv"` +
     ` "https://www.youtube.com/watch?v=${videoId}"`,
   )
@@ -145,7 +145,7 @@ app.get('/download', (req: Request, res: Response) => {
     ...(PROXY ? ['--proxy', PROXY] : []),
     '--no-warnings',
     '--no-cache-dir',
-    '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best',
+    '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
     '--extractor-args', 'youtube:player_client=ios,mweb,tv',
     '-o', '-',
     `https://www.youtube.com/watch?v=${videoId}`,
