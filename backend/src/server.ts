@@ -146,7 +146,9 @@ app.get('/download', (req: Request, res: Response) => {
     '--no-warnings',
     '--no-cache-dir',
     '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
-    '--extractor-args', 'youtube:player_client=ios,mweb,tv',
+    // Use android+web clients for downloads — they expose far more downloadable
+    // formats than ios/mweb/tv which are optimised for streaming URL extraction.
+    '--extractor-args', 'youtube:player_client=android,web',
     '-o', '-',
     `https://www.youtube.com/watch?v=${videoId}`,
   ];
