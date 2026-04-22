@@ -11,6 +11,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useActiveTrack } from 'react-native-track-player';
 import Icon from 'react-native-vector-icons/FontAwesome5';
@@ -23,7 +25,7 @@ import {
 } from '../constants';
 import { styles, formatTime } from '../styles';
 import { playLibraryTrack } from '../services/musicPlayerServices';
-import type { RootStackParamList } from '../navigation/types';
+import type { RootStackParamList, TabParamList } from '../navigation/types';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
 import BackSwipeContainer from '../components/BackSwipeContainer';
 import AlbumCardFooterBlur from '../components/AlbumCardFooterBlur';
@@ -35,7 +37,10 @@ import {
   hapticSelection,
 } from '../utils/haptics';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, 'Library'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 const CAROUSEL_AUTO_MS = 5000;
 /** Matches horizontal insets for `screenContainer` + `ScrollView` (see Full albums grid). */
@@ -153,7 +158,7 @@ export default function MusicLibrary({ navigation }: Props) {
           <Text style={styles.nowPlayingTitle}>Music Library</Text>
           <TouchableOpacity
             onPress={() => {
-              navigation.navigate('Search');
+              navigation.navigate('Main', { screen: 'Search' });
             }}>
                 <Icon name="search" size={20} color={COLORS.text} />
               </TouchableOpacity>

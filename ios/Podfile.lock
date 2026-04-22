@@ -1,4 +1,26 @@
 PODS:
+  - AsyncStorage (3.0.2):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - BVLinearGradient (2.8.3):
     - React-Core
   - FBLazyVector (0.85.0)
@@ -1912,6 +1934,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNFS (2.20.0):
+    - React-Core
   - RNGestureHandler (2.31.1):
     - hermes-engine
     - RCTRequired
@@ -2074,6 +2098,7 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
+  - "AsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - BVLinearGradient (from `../node_modules/react-native-linear-gradient`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
@@ -2155,6 +2180,7 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - "RNCMaskedView (from `../node_modules/@react-native-masked-view/masked-view`)"
+  - RNFS (from `../node_modules/react-native-fs`)
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNReactNativeHapticFeedback (from `../node_modules/react-native-haptic-feedback`)
   - RNScreens (from `../node_modules/react-native-screens`)
@@ -2167,6 +2193,8 @@ SPEC REPOS:
     - SwiftAudioEx
 
 EXTERNAL SOURCES:
+  AsyncStorage:
+    :path: "../node_modules/@react-native-async-storage/async-storage"
   BVLinearGradient:
     :path: "../node_modules/react-native-linear-gradient"
   FBLazyVector:
@@ -2328,6 +2356,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNCMaskedView:
     :path: "../node_modules/@react-native-masked-view/masked-view"
+  RNFS:
+    :path: "../node_modules/react-native-fs"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNReactNativeHapticFeedback:
@@ -2342,6 +2372,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
+  AsyncStorage: 857a13f3c66a30d6b02efa09babba3d457e8e8ca
   BVLinearGradient: cb006ba232a1f3e4f341bb62c42d1098c284da70
   FBLazyVector: c00c20551d40126351a6783c47ce75f5b374851b
   hermes-engine: 001433df9861be7fb0b4e075d99d1332789f7bdf
@@ -2422,6 +2453,7 @@ SPEC CHECKSUMS:
   ReactCommon: fe2a3af8975e63efa60f95fca8c34dc85deee360
   ReactNativeDependencies: b8170a3b3abfbcd53bc5af5955f93c1dfbf1a81c
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
+  RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
   RNGestureHandler: 187c5c7936abf427bc4d22d6c3b1ac80ad1f63c0
   RNReactNativeHapticFeedback: 16e5f7fd37e2acc5a33ea14f48bfd88ff43776ee
   RNScreens: 01b065ded2dfe7987bcce770ff3a196be417ff41

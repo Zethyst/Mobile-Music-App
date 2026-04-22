@@ -30,9 +30,9 @@ export type StreamInfo = {
   headers: Record<string, string>;
 };
 
-/** Fetches a YouTube CDN URL + required headers from the backend.
+/** Fetches a YouTube CDN URL + required headers from the backend (on demand — no prefetch).
  *  TrackPlayer attaches the headers so ExoPlayer sends them when streaming.
- *  Pass `forceRefresh: true` to bust the server-side cache (use after a PlaybackError). */
+ *  Pass `forceRefresh: true` to clear the server’s in-flight coalescer and resolve a new URL (e.g. after PlaybackError). */
 export async function getStreamUrl(
   videoId: string,
   forceRefresh = false,

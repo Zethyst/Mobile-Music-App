@@ -19,3 +19,14 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+// @react-native-async-storage/async-storage v3 — dependency is vendored under node_modules (not on Maven Central)
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url("$rootDir/../node_modules/@react-native-async-storage/async-storage/android/local_repo")
+        }
+    }
+}

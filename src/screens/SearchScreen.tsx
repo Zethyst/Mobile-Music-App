@@ -10,8 +10,13 @@ import {
   Alert,
   Keyboard,
   StyleSheet,
+  DeviceEventEmitter,
+  Modal,
+  Pressable,
 } from 'react-native';
 import TrackPlayer, { useActiveTrack } from 'react-native-track-player';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/FontAwesome5';
 import { searchYouTube, getStreamUrl, SearchResult, StreamInfo } from '../services/streamService';
@@ -20,14 +25,21 @@ import { styles } from '../styles';
 import ScreenWithMiniPlayer from '../components/ScreenWithMiniPlayer';
 import BackSwipeContainer from '../components/BackSwipeContainer';
 import StreamRecoveryBanner from '../components/StreamRecoveryBanner';
-import type { RootStackParamList } from '../navigation/types';
+import type { RootStackParamList, TabParamList } from '../navigation/types';
 import {
   hapticLight,
   hapticMedium,
   hapticSuccess,
 } from '../utils/haptics';
+import {
+  downloadTrackToDevice,
+  DOWNLOAD_PROGRESS_EVENT,
+} from '../services/downloadService';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, 'Search'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 /** Library track IDs are numeric strings — YouTube video IDs are longer alphanumeric strings. */
 const LIBRARY_IDS = new Set(libraryTracks.map(t => t.id));
@@ -43,13 +55,32 @@ export default function SearchScreen({ navigation }: Props) {
   const [results, setResults] = useState<SearchResult[]>(cache.results);
   const [loading, setLoading] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   /** Video IDs that were just added (shows a ✓ for 2 s) */
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [menuItem, setMenuItem] = useState<SearchResult | null>(null);
   const activeTrack = useActiveTrack();
 
   // Keep cache in sync whenever state changes
   useEffect(() => { cache.query = query; }, [query]);
   useEffect(() => { cache.results = results; }, [results]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      DOWNLOAD_PROGRESS_EVENT,
+      (e: { videoId: string; percent: number }) => {
+        setDownloadProgress(prev => {
+          if (e.percent >= 100) {
+            const { [e.videoId]: _, ...rest } = { ...prev, [e.videoId]: e.percent };
+            return rest;
+          }
+          return { ...prev, [e.videoId]: e.percent };
+        });
+      },
+    );
+    return () => sub.remove();
+  }, []);
 
   const handleSearch = async () => {
     Keyboard.dismiss();
@@ -134,6 +165,49 @@ export default function SearchScreen({ navigation }: Props) {
     }
   };
 
+  const handleDownload = async (item: SearchResult) => {
+    setDownloadLoadingId(item.videoId);
+    try {
+      await downloadTrackToDevice({
+        videoId: item.videoId,
+        title: item.title,
+        artist: item.artist,
+        thumbnail: item.thumbnail,
+        duration: item.duration,
+      });
+      hapticSuccess();
+      setTimeout(
+        () => Alert.alert('Downloaded', 'Saved to Downloads on this device.'),
+        0,
+      );
+    } catch {
+      setTimeout(() => Alert.alert('Download failed', 'Could not save the file. Try again.'), 0);
+    } finally {
+      setDownloadLoadingId(null);
+    }
+  };
+
+  const showTrackMenu = (item: SearchResult) => {
+    hapticLight();
+    setMenuItem(item);
+  };
+
+  const closeTrackMenu = () => setMenuItem(null);
+
+  const onMenuAddToQueue = () => {
+    if (!menuItem) return;
+    const item = menuItem;
+    closeTrackMenu();
+    void handleAddToQueue(item);
+  };
+
+  const onMenuDownload = () => {
+    if (!menuItem) return;
+    const item = menuItem;
+    closeTrackMenu();
+    void handleDownload(item);
+  };
+
   const formatDuration = (secs: number | null) => {
     if (!secs) return '';
     const m = Math.floor(secs / 60);
@@ -209,51 +283,62 @@ export default function SearchScreen({ navigation }: Props) {
               {results.map(item => {
                 const isPlaying = activeTrack?.id === item.videoId;
                 const isLoading = loadingId === item.videoId;
+                const isDlBusy = downloadLoadingId === item.videoId;
                 const isAdded = addedIds.has(item.videoId);
+                const pct = downloadProgress[item.videoId];
                 return (
                   <View
                     key={item.videoId}
-                    style={[styles.trackItem, isPlaying && styles.trackItemPlaying]}>
+                    style={srStyles.trackWrap}>
+                    <View style={[styles.trackItem, { borderBottomWidth: 0 }, isPlaying && styles.trackItemPlaying]}>
+                      <TouchableOpacity
+                        style={srStyles.mainTap}
+                        onPress={() => handlePlayNow(item)}
+                        activeOpacity={0.7}
+                        disabled={isLoading || isDlBusy}>
+                        <Image source={{ uri: item.thumbnail }} style={styles.trackThumb} />
+                        <View style={styles.trackInfo}>
+                          <Text
+                            style={[styles.trackTitle, isPlaying && styles.trackTitlePlaying]}
+                            numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={styles.trackArtist} numberOfLines={1}>
+                            {item.artist}
+                          </Text>
+                          {item.duration ? (
+                            <Text style={styles.trackArtist}>{formatDuration(item.duration)}</Text>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
 
-                    {/* Main tap zone → play now */}
-                    <TouchableOpacity
-                      style={srStyles.mainTap}
-                      onPress={() => handlePlayNow(item)}
-                      activeOpacity={0.7}
-                      disabled={isLoading}>
-                      <Image source={{ uri: item.thumbnail }} style={styles.trackThumb} />
-                      <View style={styles.trackInfo}>
-                        <Text
-                          style={[styles.trackTitle, isPlaying && styles.trackTitlePlaying]}
-                          numberOfLines={1}>
-                          {item.title}
-                        </Text>
-                        <Text style={styles.trackArtist} numberOfLines={1}>
-                          {item.artist}
-                        </Text>
-                        {item.duration ? (
-                          <Text style={styles.trackArtist}>{formatDuration(item.duration)}</Text>
-                        ) : null}
+                      <TouchableOpacity
+                        style={styles.trackPlayingIcon}
+                        onPress={() => showTrackMenu(item)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        disabled={isLoading || isDlBusy}>
+                        {isLoading || isDlBusy ? (
+                          <ActivityIndicator size="small" color={COLORS.primary} />
+                        ) : isPlaying ? (
+                          <Icon name="volume-up" size={14} color={COLORS.playing} />
+                        ) : isAdded ? (
+                          <Icon name="check" size={14} color="#22c55e" solid />
+                        ) : (
+                          <Icon name="ellipsis-v" size={14} color={COLORS.primary} solid />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+
+                    {pct !== undefined && pct < 100 && (
+                      <View style={srStyles.progressTrack}>
+                        <View
+                          style={[
+                            srStyles.progressFill,
+                            { width: `${pct}%`, backgroundColor: COLORS.primary },
+                          ]}
+                        />
                       </View>
-                    </TouchableOpacity>
-
-                    {/* Icon button → add to queue */}
-                    <TouchableOpacity
-                      style={styles.trackPlayingIcon}
-                      onPress={() => handleAddToQueue(item)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      disabled={isLoading}>
-                      {isLoading ? (
-                        <ActivityIndicator size="small" color={COLORS.primary} />
-                      ) : isPlaying ? (
-                        <Icon name="volume-up" size={14} color={COLORS.playing} />
-                      ) : isAdded ? (
-                        <Icon name="check" size={14} color="#22c55e" solid />
-                      ) : (
-                        <Icon name="plus" size={14} color={COLORS.primary} solid />
-                      )}
-                    </TouchableOpacity>
-
+                    )}
                   </View>
                 );
               })}
@@ -264,6 +349,46 @@ export default function SearchScreen({ navigation }: Props) {
       </ScrollView>
       <StreamRecoveryBanner />
       </View>
+
+      <Modal
+        visible={menuItem != null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeTrackMenu}
+        statusBarTranslucent>
+        <View style={menuStyles.backdrop}>
+          <Pressable style={menuStyles.scrim} onPress={closeTrackMenu} />
+          <View style={menuStyles.sheet} accessibilityViewIsModal>
+            <Text style={menuStyles.menuTitle} numberOfLines={2}>
+              {menuItem?.title}
+            </Text>
+            <Text style={menuStyles.menuHint}>Choose an action</Text>
+
+            <TouchableOpacity
+              style={menuStyles.row}
+              onPress={onMenuAddToQueue}
+              activeOpacity={0.7}>
+              <Icon name="plus" size={16} color={COLORS.primary} solid />
+              <Text style={menuStyles.rowText}>Add to queue</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={menuStyles.row}
+              onPress={onMenuDownload}
+              activeOpacity={0.7}>
+              <Icon name="cloud-download-alt" size={16} color={COLORS.primary} solid />
+              <Text style={menuStyles.rowText}>Download</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={menuStyles.cancelRow}
+              onPress={closeTrackMenu}
+              activeOpacity={0.7}>
+              <Text style={menuStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       </BackSwipeContainer>
     </ScreenWithMiniPlayer>
   );
@@ -271,6 +396,75 @@ export default function SearchScreen({ navigation }: Props) {
 
 const searchScreenStyles = StyleSheet.create({
   root: { flex: 1 },
+});
+
+const menuStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  scrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  sheet: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+    zIndex: 1,
+  },
+  menuTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  menuHint: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
+  rowText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  cancelRow: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
+  cancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textLight,
+  },
 });
 
 // Local styles that extend the shared sheet
@@ -307,18 +501,32 @@ const hint: object = {
   fontSize: 15,
 };
 
-const srStyles = {
+const srStyles = StyleSheet.create({
+  trackWrap: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
   mainTap: {
     flex: 1,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'stretch' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  progressTrack: {
+    width: '100%',
+    height: 2,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    marginBottom: 4,
+    marginTop: 2,
+  },
+  progressFill: {
+    height: 2,
   },
   iconBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     minWidth: 40,
   },
-};
+});

@@ -24,23 +24,31 @@ import { DEFAULT_COVER_URI, COLORS, resolveTrackArtworkUri } from '../constants'
 import type { RootStackParamList } from '../navigation/types';
 import { hapticHeavy } from '../utils/haptics';
 
-// Ring geometry
-const SIZE = 58;           // total SVG + button size
-const STROKE = 5;          // ring stroke width
-const R = (SIZE - STROKE) / 2;   // radius fits inside the stroke
+const SIZE = 58;
+const STROKE = 5;
+const R = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * R;
 
 type MiniNav = NativeStackNavigationProp<RootStackParamList>;
 
+/**
+ * Floating bar — `bottom` is measured from the bottom of the screen scene.
+ * Tab scenes already omit the tab bar area, so do **not** add `useBottomTabBarHeight` here
+ * (that would double the gap above the tabs).
+ */
 export default function MiniPlayer() {
-  const navigation = useNavigation<MiniNav>();
   const insets = useSafeAreaInsets();
+  const bottom = Platform.OS === 'android' ? 4 + insets.bottom : 4;
+  return <MiniPlayerInner bottom={bottom} />;
+}
+
+function MiniPlayerInner({ bottom }: { bottom: number }) {
+  const navigation = useNavigation<MiniNav>();
   const track = useActiveTrack();
   const playbackState = usePlaybackState();
   const { position, duration } = useProgress(500);
   const isPlaying = playbackState.state === State.Playing;
 
-  // Continuous rotation for artwork (same as main player)
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const rotateRef = useRef<Animated.CompositeAnimation | null>(null);
   const rotationValue = useRef(0);
@@ -78,20 +86,15 @@ export default function MiniPlayer() {
     if (isPlaying) { await TrackPlayer.pause(); } else { await TrackPlayer.play(); }
   };
 
-  // Stroke-dashoffset: 0 = full ring, CIRCUMFERENCE = empty ring
   const progress = duration > 0 ? Math.min(position / duration, 1) : 0;
   const dashOffset = CIRCUMFERENCE * (1 - progress);
 
   return (
-    <View
-      style={[
-        mp.wrapper,
-        Platform.OS === 'android' && { bottom: 24 + insets.bottom },
-      ]}>
+    <View style={[mp.wrapper, { bottom, zIndex: 100, elevation: 24 }]}>
       <TouchableOpacity
         activeOpacity={0.92}
         style={mp.pillOuter}
-        onPress={() => navigation.navigate('Player')}
+        onPress={() => navigation.navigate('Main', { screen: 'Player' })}
         accessibilityRole="button"
         accessibilityLabel="Open full screen player">
         <LinearGradient
@@ -100,13 +103,11 @@ export default function MiniPlayer() {
           end={{ x: 1, y: 1 }}
           style={mp.pill}>
 
-        {/* Rotating disc artwork */}
         <Animated.Image
           source={{ uri: resolveTrackArtworkUri(track) ?? DEFAULT_COVER_URI }}
           style={[mp.artwork, { transform: [{ rotate: artworkRotate }] }]}
         />
 
-        {/* Song + Artist */}
         <View style={mp.info}>
           <Text style={mp.title} numberOfLines={1}>
             {track?.title ?? 'Not Playing'}
@@ -116,13 +117,11 @@ export default function MiniPlayer() {
           </Text>
         </View>
 
-        {/* Circular play/pause with SVG progress ring */}
         <TouchableOpacity
           onPress={togglePlayback}
           activeOpacity={0.8}
           style={mp.btnWrapper}>
 
-          {/* White button face */}
           <View style={mp.buttonFace}>
             <Icon
               name={isPlaying ? 'pause' : 'play'}
@@ -132,7 +131,6 @@ export default function MiniPlayer() {
             />
           </View>
 
-          {/* SVG progress ring — sits on top, pointer events none */}
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
               <Defs>
@@ -142,7 +140,6 @@ export default function MiniPlayer() {
                 </SvgLinearGradient>
               </Defs>
 
-              {/* Grey background track */}
               <Circle
                 cx={SIZE / 2}
                 cy={SIZE / 2}
@@ -152,7 +149,6 @@ export default function MiniPlayer() {
                 strokeWidth={STROKE}
               />
 
-              {/* Gradient progress arc */}
               <Circle
                 cx={SIZE / 2}
                 cy={SIZE / 2}
@@ -163,7 +159,6 @@ export default function MiniPlayer() {
                 strokeDasharray={CIRCUMFERENCE}
                 strokeDashoffset={dashOffset}
                 strokeLinecap="round"
-                // rotate -90° so the arc starts at the top
                 rotation="-90"
                 origin={`${SIZE / 2}, ${SIZE / 2}`}
               />
@@ -177,12 +172,11 @@ export default function MiniPlayer() {
 }
 
 const PILL_H = 72;
-const INNER_BTN = SIZE - STROKE * 2 - 4; // white face diameter
+const INNER_BTN = SIZE - STROKE * 2 - 4;
 
 const mp = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    bottom: 24,
     left: 16,
     right: 16,
   },
@@ -196,7 +190,6 @@ const mp = StyleSheet.create({
     borderRadius: PILL_H / 2,
     flexDirection: 'row',
     alignItems: 'center',
-    // iOS clips children to the pill curve; ring + stroke need extra inset than Android
     paddingHorizontal: Platform.select({ ios: 14, default: 10 }),
     gap: 10,
     shadowColor: '#888',

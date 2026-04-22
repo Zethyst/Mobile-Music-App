@@ -7,6 +7,8 @@ import {
   Easing,
   useWindowDimensions,
 } from 'react-native';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   GestureHandlerRootView,
@@ -23,14 +25,17 @@ import ArtworkWithGlow from '../components/ArtworkWithGlow';
 import StreamRecoveryBanner from '../components/StreamRecoveryBanner';
 import { COLORS, resolveTrackArtworkUri } from '../constants';
 import { styles } from '../styles';
-import type { RootStackParamList } from '../navigation/types';
+import type { RootStackParamList, TabParamList } from '../navigation/types';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Player'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, 'Player'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 const AnimatedIcon = Animated.createAnimatedComponent(Icon);
 
 export default function MusicPlayer({ navigation }: Props) {
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const track = useActiveTrack();
   const playbackState = usePlaybackState();
   const isPlaying = playbackState.state === PlaybackState.Playing;
@@ -48,7 +53,7 @@ export default function MusicPlayer({ navigation }: Props) {
   useEffect(() => {
     const t = requestAnimationFrame(measureControlsTop);
     return () => cancelAnimationFrame(t);
-  }, [windowHeight, measureControlsTop]);
+  }, [windowHeight, windowWidth, measureControlsTop]);
 
   const onPlayerPan = useCallback(
     ({ nativeEvent }: PanGestureHandlerGestureEvent) => {
@@ -77,31 +82,25 @@ export default function MusicPlayer({ navigation }: Props) {
       const ax = Math.abs(translationX);
       const ay = Math.abs(translationY);
 
-      // Horizontal swipes (only from above the controls area)
       const isHorizontal =
         startedAboveControls &&
         ax > ay * 1.2 &&
         (ax > 72 || Math.abs(velocityX) > 520);
 
-      // Vertical swipes
       const isVertical =
         ay > ax * 1.2 &&
         (ay > 56 || Math.abs(velocityY) > 380);
 
       if (isHorizontal) {
         if (translationX < 0) {
-          // Left swipe → Search
-          navigation.navigate('Search');
+          navigation.navigate('Main', { screen: 'Search' });
         } else {
-          // Right swipe → Library
-          navigation.navigate('Library');
+          navigation.navigate('Main', { screen: 'Library' });
         }
       } else if (isVertical) {
         if (translationY < 0) {
-          // Up swipe → Lyrics
           navigation.navigate('Lyrics');
         } else {
-          // Down swipe → Queue
           navigation.navigate('Queue');
         }
       }
@@ -109,7 +108,6 @@ export default function MusicPlayer({ navigation }: Props) {
     [navigation],
   );
 
-  // Rotation animation for album art
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const rotateRef = useRef<Animated.CompositeAnimation | null>(null);
   const rotationValue = useRef(0);
@@ -177,16 +175,13 @@ export default function MusicPlayer({ navigation }: Props) {
           <View style={[styles.screenContainer, styles.playerScreenLayout]}>
             <View style={styles.headerRow}>
               <TouchableOpacity
-                onPress={() => navigation.navigate('Library')}
+                onPress={() => navigation.navigate('Main', { screen: 'Library' })}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
                 accessibilityLabel="Open music library">
                 <AnimatedIcon name="music" size={25} color={libraryIconColor} />
               </TouchableOpacity>
               <Text style={styles.nowPlayingTitle}>Now Playing</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Search')}>
-                <Icon name="search" size={20} color={COLORS.text} />
-              </TouchableOpacity>
               <View style={{ width: 20 }} />
             </View>
 

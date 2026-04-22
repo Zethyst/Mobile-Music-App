@@ -6,6 +6,7 @@ import {
   Animated,
   Easing,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import {
   SafeAreaProvider,
@@ -13,7 +14,9 @@ import {
 } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import LinearGradient from 'react-native-linear-gradient';
+import Icon from 'react-native-vector-icons/FontAwesome5';
 import { setupPlayer, addTracks } from './services/musicPlayerServices';
 import { pingHealthCheck } from './services/streamService';
 import MusicPlayer from './screens/MusicPlayer';
@@ -23,9 +26,10 @@ import FullSongsScreen from './screens/FullSongsScreen';
 import LyricsScreen from './screens/LyricsScreen';
 import SearchScreen from './screens/SearchScreen';
 import QueueScreen from './screens/QueueScreen';
+import DownloadsScreen from './screens/DownloadsScreen';
 import { styles } from './styles';
 import { COLORS } from './constants';
-import type { RootStackParamList } from './navigation/types';
+import type { RootStackParamList, TabParamList } from './navigation/types';
 
 function LoadingScreen() {
   const insets = useSafeAreaInsets();
@@ -112,7 +116,6 @@ function LoadingScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
       <View style={splash.centerBlock}>
-        {/* Spinning vinyl disc */}
         <Animated.View
           style={[
             splash.discWrap,
@@ -271,6 +274,84 @@ const splash = StyleSheet.create({
 });
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab   = createBottomTabNavigator<TabParamList>();
+
+function TabIcon({ name, color, size }: { name: string; color: string; size: number }) {
+  return <Icon name={name} size={size - 2} color={color} solid />;
+}
+
+function TabBarBackground() {
+  return (
+    <LinearGradient
+      colors={[
+        'rgba(255,255,255,0)',   // fully transparent at top
+        'rgba(255,255,255,0.85)',
+        'rgba(255,255,255,0.97)',
+      ]}
+      locations={[0, 0.3, 1]}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+  );
+}
+
+function TabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor:   COLORS.secondary,
+        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarBackground: () => <TabBarBackground />,
+        tabBarStyle: {
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          height:          Platform.select({ ios: 83, default: 62 }),
+          paddingBottom:   Platform.select({ ios: 28, default: 10 }),
+          paddingTop:      8,
+          elevation:       0,
+          shadowColor:     '#000',
+          shadowOffset:    { width: 0, height: -2 },
+          shadowOpacity:   0.08,
+          shadowRadius:    10,
+        },
+        tabBarLabelStyle: {
+          fontSize:   11,
+          fontWeight: '600',
+        },
+      }}>
+      <Tab.Screen
+        name="Player"
+        component={MusicPlayer}
+        options={{
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => <TabIcon name="search" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Library"
+        component={MusicLibrary}
+        options={{
+          tabBarIcon: ({ color, size }) => <TabIcon name="compact-disc" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Downloads"
+        component={DownloadsScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => <TabIcon name="cloud-download-alt" color={color} size={size} />,
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
 
 export default function App() {
   const [isPlayerReady, setIsPlayerReady] = useState(false);
@@ -286,9 +367,7 @@ export default function App() {
         setIsPlayerReady(true);
       }
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   if (!isPlayerReady) {
@@ -304,23 +383,12 @@ export default function App() {
       <NavigationContainer>
         <View style={styles.safeArea}>
           <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-          <Stack.Navigator
-            initialRouteName="Player"
-            screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Player" component={MusicPlayer} />
-            <Stack.Screen
-              name="Library"
-              component={MusicLibrary}
-              options={{
-                // Right-edge swipe opens Library — match “revealed from the left” instead of default push-from-right
-                animation: 'slide_from_left',
-              }}
-            />
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Main" component={TabNavigator} />
             <Stack.Screen name="FullAlbums" component={FullAlbumsScreen} />
-            <Stack.Screen name="FullSongs" component={FullSongsScreen} />
-            <Stack.Screen name="Lyrics" component={LyricsScreen} />
-            <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search' }}/>
-            <Stack.Screen name="Queue" component={QueueScreen} options={{ title: 'Queue' }}/>
+            <Stack.Screen name="FullSongs"  component={FullSongsScreen} />
+            <Stack.Screen name="Lyrics"     component={LyricsScreen} />
+            <Stack.Screen name="Queue"      component={QueueScreen} />
           </Stack.Navigator>
         </View>
       </NavigationContainer>
