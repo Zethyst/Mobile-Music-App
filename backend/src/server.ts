@@ -44,8 +44,11 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
   if (existing) return existing;
 
   const bin = ytDlpBin();
+  // Read proxy at request time (not module load) to pick up env var changes
+  const proxy = process.env.YTDLP_PROXY || '';
+  const proxyArg = proxy ? `--proxy "${proxy}"` : '';
   const promise = run(
-    `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag}` +
+    `${bin} ${cookiesFlag} ${proxyArg} ${jsRuntimeFlag}` +
     ` --get-url --no-warnings --no-cache-dir` +
     ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best"` +
     ` --extractor-args "youtube:player_client=ios,mweb,tv"` +
