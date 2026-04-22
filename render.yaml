@@ -13,6 +13,6 @@ services:
       - key: PORT
         value: 3000
       - key: YTDLP_PROXY
-        value: http://njykdqoc:4802hockovky@198.23.239.134:6540
+        sync: false  # Set this in Render dashboard → Environment
       - key: YTDLP_JS_RUNTIME
         value: node

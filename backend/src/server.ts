@@ -71,11 +71,14 @@ app.get('/health', async (_req, res) => {
     const { stdout } = await run(`${ytDlpBin()} --version`);
     version = stdout.trim();
   } catch {}
+  const proxy = process.env.YTDLP_PROXY || '';
   res.json({
     status:    'ok',
     ytDlpBin:  ytDlpBin(),
     binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp')),
     version,
+    proxySet:  proxy.length > 0,
+    proxyHost: proxy ? (() => { try { return new URL(proxy).hostname; } catch { return 'invalid'; } })() : null,
   });
 });
 
@@ -86,11 +89,13 @@ app.get('/debug-formats', async (req: Request, res: Response) => {
 
   try {
     const bin = ytDlpBin();
+    const proxy = process.env.YTDLP_PROXY || '';
+    const proxyArg = proxy ? `--proxy "${proxy}"` : '';
     const { stdout, stderr } = await run(
-      `${bin} ${cookiesFlag} --no-warnings --no-cache-dir --list-formats "https://www.youtube.com/watch?v=${videoId}"`,
+      `${bin} ${cookiesFlag} ${proxyArg} --no-warnings --no-cache-dir --list-formats "https://www.youtube.com/watch?v=${videoId}"`,
       { timeout: 60000 },
     );
-    res.json({ videoId, formats: stdout, stderr });
+    res.json({ videoId, proxyUsed: !!proxy, formats: stdout, stderr });
   } catch (err: any) {
     res.status(500).json({
       videoId,
@@ -168,10 +173,11 @@ app.get('/download', (req: Request, res: Response) => {
   }
 
   const bin = ytDlpBin();
-  // NOTE: Proxy is intentionally skipped for downloads — proxies often block or
-  // rate-limit large data transfers. Cookies are still used for auth.
+  // Read proxy at request time (not module load) to pick up env var changes
+  const proxy = process.env.YTDLP_PROXY || '';
   const args: string[] = [
     ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
+    ...(proxy ? ['--proxy', proxy] : []),
     '--no-warnings',
     '--no-cache-dir',
     // ba = bestaudio, b = best (fallback to muxed if no audio-only available).
@@ -182,7 +188,7 @@ app.get('/download', (req: Request, res: Response) => {
     `https://www.youtube.com/watch?v=${videoId}`,
   ];
 
-  console.log('[download] spawning yt-dlp', { reqId, videoId, bin, args: args.join(' ') });
+  console.log('[download] spawning yt-dlp', { reqId, videoId, bin, proxy: proxy ? '(set)' : '(empty)', args: args.join(' ') });
 
   const ytdlp = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
