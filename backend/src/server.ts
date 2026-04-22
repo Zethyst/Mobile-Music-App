@@ -6,7 +6,7 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 
 const app = express();
@@ -121,41 +121,83 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   }
 });
 
-/** Proxy-download endpoint: resolves the CDN URL server-side and pipes audio bytes
- *  to the client, so the device never needs to send YouTube-specific headers itself. */
-app.get('/download', async (req: Request, res: Response) => {
+/** Download endpoint: spawns yt-dlp with -o - (stdout) and pipes audio bytes directly
+ *  to the client. yt-dlp manages all CDN auth/fingerprinting internally, avoiding 403s
+ *  that occur when Node's fetch() tries to re-use a URL resolved by yt-dlp. */
+app.get('/download', (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
-  if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
+  const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  let cdnUrl: string;
-  try {
-    cdnUrl = await resolveStreamUrl(videoId);
-  } catch (err) {
-    console.error('[download] yt-dlp error:', err);
-    return res.status(500).json({ error: 'Could not resolve stream URL' });
+  console.log('[download] start', {
+    reqId,
+    videoId,
+    userAgent: req.get('user-agent')?.slice(0, 120),
+  });
+
+  if (!videoId || !/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) {
+    console.warn('[download] bad/missing videoId', { reqId, videoId });
+    return res.status(400).json({ error: 'Missing or invalid videoId' });
   }
 
-  try {
-    const upstream = await fetch(cdnUrl, { headers: STREAM_HEADERS });
-    if (!upstream.ok) {
-      return res.status(502).json({ error: `Upstream returned ${upstream.status}` });
+  const bin = ytDlpBin();
+  const args: string[] = [
+    ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
+    ...(PROXY ? ['--proxy', PROXY] : []),
+    '--no-warnings',
+    '--no-cache-dir',
+    '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best',
+    '--extractor-args', 'youtube:player_client=ios,mweb,tv',
+    '-o', '-',
+    `https://www.youtube.com/watch?v=${videoId}`,
+  ];
+
+  console.log('[download] spawning yt-dlp', { reqId, videoId, bin, args: args.join(' ') });
+
+  const ytdlp = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  let stderrBuf = '';
+  ytdlp.stderr.on('data', (chunk: Buffer) => {
+    const text = chunk.toString();
+    stderrBuf += text;
+  });
+
+  // Send headers immediately so the client (RNFS) doesn't time out waiting for
+  // a response while yt-dlp is still in its pre-download phase (e.g. JS challenge
+  // solving, rate-limit sleeps). The body follows once yt-dlp starts outputting.
+  res.setHeader('Content-Type', 'audio/mp4');
+  res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.status(200);
+  // Flush the headers to the socket immediately
+  res.flushHeaders();
+  ytdlp.stdout.pipe(res);
+
+  ytdlp.stdout.once('data', () => {
+    console.log('[download] first bytes piped to client', { reqId, videoId });
+  });
+
+  ytdlp.on('close', (code) => {
+    const stderr = stderrBuf.slice(-800);
+    if (code === 0) {
+      console.log('[download] yt-dlp done', { reqId, videoId });
+    } else {
+      console.error('[download] yt-dlp non-zero exit', { reqId, videoId, code, stderr });
     }
+  });
 
-    res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'audio/mp4');
-    const contentLength = upstream.headers.get('content-length');
-    if (contentLength) res.setHeader('Content-Length', contentLength);
-    res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
-
-    if (!upstream.body) {
-      return res.status(502).json({ error: 'Empty upstream body' });
+  ytdlp.on('error', (err) => {
+    console.error('[download] spawn error', { reqId, videoId, err });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to start yt-dlp' });
     }
+  });
 
-    const { Readable } = await import('stream');
-    Readable.fromWeb(upstream.body as import('stream/web').ReadableStream).pipe(res);
-  } catch (err) {
-    console.error('[download] proxy error:', err);
-    if (!res.headersSent) res.status(502).json({ error: 'Proxy fetch failed' });
-  }
+  req.on('close', () => {
+    if (!res.writableEnded) {
+      console.log('[download] client disconnected, killing yt-dlp', { reqId, videoId });
+      ytdlp.kill('SIGTERM');
+    }
+  });
 });
 
 app.listen(PORT, () => console.log(`[+] Server running on port ${PORT}`));

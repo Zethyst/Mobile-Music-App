@@ -180,7 +180,8 @@ export default function SearchScreen({ navigation }: Props) {
         () => Alert.alert('Downloaded', 'Saved to Downloads on this device.'),
         0,
       );
-    } catch {
+    } catch (e) {
+      console.error('[Download] handleDownload', e);
       setTimeout(() => Alert.alert('Download failed', 'Could not save the file. Try again.'), 0);
     } finally {
       setDownloadLoadingId(null);
