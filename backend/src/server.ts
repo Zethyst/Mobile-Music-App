@@ -65,12 +65,40 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
+  let version = 'unknown';
+  try {
+    const { stdout } = await run(`${ytDlpBin()} --version`);
+    version = stdout.trim();
+  } catch {}
   res.json({
     status:    'ok',
     ytDlpBin:  ytDlpBin(),
     binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp')),
+    version,
   });
+});
+
+/** Debug endpoint: list available formats for a video (helps diagnose download failures). */
+app.get('/debug-formats', async (req: Request, res: Response) => {
+  const videoId = req.query.videoId as string;
+  if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
+
+  try {
+    const bin = ytDlpBin();
+    const { stdout, stderr } = await run(
+      `${bin} ${cookiesFlag} --no-warnings --no-cache-dir --list-formats "https://www.youtube.com/watch?v=${videoId}"`,
+      { timeout: 60000 },
+    );
+    res.json({ videoId, formats: stdout, stderr });
+  } catch (err: any) {
+    res.status(500).json({
+      videoId,
+      error: err.message,
+      stdout: err.stdout,
+      stderr: err.stderr,
+    });
+  }
 });
 
 app.get('/search', async (req: Request, res: Response) => {
@@ -140,15 +168,16 @@ app.get('/download', (req: Request, res: Response) => {
   }
 
   const bin = ytDlpBin();
+  // NOTE: Proxy is intentionally skipped for downloads — proxies often block or
+  // rate-limit large data transfers. Cookies are still used for auth.
   const args: string[] = [
     ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
-    ...(PROXY ? ['--proxy', PROXY] : []),
     '--no-warnings',
     '--no-cache-dir',
-    '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
-    // Use android+web clients for downloads — they expose far more downloadable
-    // formats than ios/mweb/tv which are optimised for streaming URL extraction.
-    '--extractor-args', 'youtube:player_client=android,web',
+    // ba = bestaudio, b = best (fallback to muxed if no audio-only available).
+    // Let yt-dlp auto-select player clients — explicit restrictions cause failures.
+    '--format', 'ba/b',
+    '--no-playlist',
     '-o', '-',
     `https://www.youtube.com/watch?v=${videoId}`,
   ];
