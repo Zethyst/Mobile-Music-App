@@ -39,6 +39,49 @@ const STREAM_HEADERS = {
 
 const inflight = new Map<string, Promise<string>>();
 
+function proxyHostnameForLog(): string | null {
+  const p = process.env.YTDLP_PROXY || '';
+  if (!p) return null;
+  try {
+    return new URL(p).hostname;
+  } catch {
+    return 'invalid-proxy-url';
+  }
+}
+
+/** Safe summary for logs — avoids dumping long-lived signed query strings in full. */
+function summarizeResolvedStream(stdout: string): Record<string, unknown> {
+  const lines = stdout.trim().split('\n').filter(Boolean);
+  const first = lines[0] ?? '';
+  const out: Record<string, unknown> = {
+    lineCount: lines.length,
+    firstLineChars: first.length,
+  };
+  if (lines.length > 1) {
+    out.warning =
+      'Multiple stdout lines — using first only; DASH/multi-URL output can confuse clients.';
+  }
+  try {
+    const u = new URL(first);
+    out.urlHost = u.hostname;
+    out.pathPrefix = u.pathname.slice(0, 96);
+    out.queryParamKeys = [...u.searchParams.keys()].slice(0, 20);
+    const host = u.hostname.toLowerCase();
+    out.looksLikeGoogleVideo = host.includes('googlevideo.') || host.includes('gvt1.');
+  } catch {
+    out.parseableAsUrl = false;
+    out.firstLinePrefix = first.slice(0, 96);
+  }
+  const low = first.toLowerCase();
+  if (low.includes('.webm') || low.includes('mime=audio%2Fwebm')) out.formatHint = 'webm';
+  else if (low.includes('.m4a') || low.includes('mime=audio%2Fmp4')) out.formatHint = 'm4a_or_mp4_audio';
+  else if (low.includes('.mp4')) out.formatHint = 'mp4';
+  else out.formatHint = 'unknown';
+  return out;
+}
+
+type ExecErr = NodeJS.ErrnoException & { stdout?: string; stderr?: string };
+
 async function resolveStreamUrl(videoId: string): Promise<string> {
   const existing = inflight.get(videoId);
   if (existing) return existing;
@@ -47,6 +90,14 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
   // Read proxy at request time (not module load) to pick up env var changes
   const proxy = process.env.YTDLP_PROXY || '';
   const proxyArg = proxy ? `--proxy "${proxy}"` : '';
+
+  console.log('[stream-url] resolve start', {
+    videoId,
+    ytDlp: bin === 'yt-dlp' ? 'PATH' : bin,
+    cookiesFile: !!cookiesFlag,
+    proxyHost: proxyHostnameForLog(),
+  });
+
   const promise = run(
     `${bin} ${cookiesFlag} ${proxyArg} ${jsRuntimeFlag}` +
     ` --get-url --no-warnings --no-cache-dir` +
@@ -54,10 +105,34 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
     ` --extractor-args "youtube:player_client=tv_embedded,ios,mweb"` +
     ` "https://www.youtube.com/watch?v=${videoId}"`,
   )
-    .then(({ stdout }) => {
+    .then(({ stdout, stderr }) => {
       const url = stdout.trim().split('\n')[0];
-      if (!url) throw new Error('yt-dlp returned no URL');
+      if (!url) {
+        console.error('[stream-url] yt-dlp empty stdout', {
+          videoId,
+          stderrTail: (stderr ?? '').slice(-1500),
+        });
+        throw new Error('yt-dlp returned no URL');
+      }
+      const summary = summarizeResolvedStream(stdout);
+      if ((stderr ?? '').trim()) {
+        console.warn('[stream-url] yt-dlp stderr (non-fatal)', {
+          videoId,
+          stderrTail: stderr!.trim().slice(-1200),
+        });
+      }
+      console.log('[stream-url] resolve ok', { videoId, ...summary });
       return url;
+    })
+    .catch((err: ExecErr) => {
+      console.error('[stream-url] resolve failed', {
+        videoId,
+        message: err?.message,
+        code: err?.code,
+        stderrTail: typeof err?.stderr === 'string' ? err.stderr.slice(-2500) : undefined,
+        stdoutTail: typeof err?.stdout === 'string' ? err.stdout.slice(-800) : undefined,
+      });
+      throw err;
     })
     .finally(() => inflight.delete(videoId));
 
@@ -149,13 +224,22 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
   if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
 
-  if (req.query.bust === '1') inflight.delete(videoId);
+  const bust = req.query.bust === '1';
+  if (bust) inflight.delete(videoId);
+
+  console.log('[stream-url] HTTP request', {
+    videoId,
+    bust,
+    xForwardedFor: req.get('x-forwarded-for')?.split(',')[0]?.trim()?.slice(0, 64),
+    userAgent: req.get('user-agent')?.slice(0, 120),
+  });
 
   try {
     const url = await resolveStreamUrl(videoId);
     res.json({ url, headers: STREAM_HEADERS });
+    console.log('[stream-url] HTTP 200', { videoId, bust });
   } catch (err) {
-    console.error(err);
+    console.error('[stream-url] HTTP 500', { videoId, bust, err });
     res.status(500).json({ error: 'Could not get stream URL' });
   }
 });
