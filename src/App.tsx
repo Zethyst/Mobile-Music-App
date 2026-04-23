@@ -143,7 +143,8 @@ function LoadingScreen() {
           </LinearGradient>
         </Animated.View>
 
-        <Text style={splash.title}>Loading player</Text>
+        <Text style={splash.brand}>Cadence</Text>
+        <Text style={splash.subtitle}>Loading player</Text>
         <AnimatedDots dotAnim={dotAnim} />
       </View>
 
@@ -232,11 +233,18 @@ const splash = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: COLORS.background,
   },
-  title: {
+  brand: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: 4,
+    marginBottom: 6,
+  },
+  subtitle: {
+    color: COLORS.textLight,
+    fontSize: 15,
     fontWeight: '600',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
     marginBottom: 14,
   },
   dotsRow: {

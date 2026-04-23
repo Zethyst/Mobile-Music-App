@@ -44,13 +44,10 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
   if (existing) return existing;
 
   const bin = ytDlpBin();
-  // Read proxy at request time (not module load) to pick up env var changes
-  const proxy = process.env.YTDLP_PROXY || '';
-  const proxyArg = proxy ? `--proxy "${proxy}"` : '';
   const promise = run(
-    `${bin} ${cookiesFlag} ${proxyArg} ${jsRuntimeFlag}` +
+    `${bin} ${cookiesFlag} ${proxyFlag} ${jsRuntimeFlag}` +
     ` --get-url --no-warnings --no-cache-dir` +
-    ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best"` +
+    ` --format "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best"` +
     ` --extractor-args "youtube:player_client=ios,mweb,tv"` +
     ` "https://www.youtube.com/watch?v=${videoId}"`,
   )
@@ -68,20 +65,11 @@ async function resolveStreamUrl(videoId: string): Promise<string> {
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', async (_req, res) => {
-  let version = 'unknown';
-  try {
-    const { stdout } = await run(`${ytDlpBin()} --version`);
-    version = stdout.trim();
-  } catch {}
-  const proxy = process.env.YTDLP_PROXY || '';
+app.get('/health', (_req, res) => {
   res.json({
     status:    'ok',
     ytDlpBin:  ytDlpBin(),
     binExists: fs.existsSync(path.join(__dirname, '..', 'bin', 'yt-dlp')),
-    version,
-    proxySet:  proxy.length > 0,
-    proxyHost: proxy ? (() => { try { return new URL(proxy).hostname; } catch { return 'invalid'; } })() : null,
   });
 });
 

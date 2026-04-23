@@ -1,32 +1,18 @@
-<h1 align="center">Music App</h1>
+# Music App
 
-<p align="center">A React Native music player that streams audio via a small Node backend powered by <strong>yt-dlp</strong>. Search tracks, build a queue, play with <strong>react-native-track-player</strong>, and browse albums and lyrics from a single stack-based UI.</p>
+A full-stack React Native music app (TypeScript) with a Node/Express backend that uses **yt-dlp** for YouTube search, **signed stream URLs** with ExoPlayer-safe headers, and **offline downloads** to device storage via **react-native-fs**; lyrics come from the **lrclib.net** API with title-normalization and multi-step search; the backend can run on **Render** (with optional `YTDLP_PROXY` and `cookies.txt` for YouTube) or locally, and for reliable downloads when cloud IPs are blocked, a **Cloudflare Tunnel** (or quick tunnel) can expose a **local Mac** so traffic uses a residential IP—features include a **tabbed navigator**, **mini player** with a gradient progress ring, **queue** with drag-and-reorder, **haptics**, **downloads library**, and **stream recovery / health** patterns.
 
-**In one sentence:** A full-stack React Native music app (TypeScript) with a Node/Express backend that uses **yt-dlp** for YouTube search, **signed stream URLs** with ExoPlayer-safe headers, and **offline downloads** to device storage via **react-native-fs**; lyrics come from the **lrclib.net** API with title-normalization and multi-step search; the backend can run on **Render** (with optional `YTDLP_PROXY` and `cookies.txt` for YouTube) or locally, and for reliable downloads when cloud IPs are blocked, a **Cloudflare Tunnel** (or quick tunnel) can expose a **local Mac** so traffic uses a residential IP—features include a **tabbed navigator**, **mini player** with a gradient progress ring, **queue** with drag-and-reorder, **haptics**, **downloads library**, and **stream recovery / health** patterns.
+## 📱 Download APK
 
----
-
-## Resume & interview notes
-
-**Three resume-style bullets (pick the ones that fit your CV):**
-
-- Architected a **Node.js + TypeScript** backend: **yt-dlp**-powered YouTube **search** and **stream** URLs, plus **audio downloads** streamed over the **socket** from the server to the phone.  
-- Built the **React Native** client with **TrackPlayer** (queue, lock screen), **device downloads** (RNFS, AsyncStorage metadata), and **lrclib**-integrated **lyrics** (API orchestration, string normalization for better matches), plus **gestures**, **haptics**, and a cohesive **UI** (gradients, mini player, search flow).  
-- Built **TypeScript** end-to-end on **Android and iOS**: **stack + tab** navigation with a persistent **mini player**, animated **splash** while the player boots, and **health pings** so a cold **Render** host wakes before streaming.
-
-**If asked: “What was the hardest challenge?”**
-
-The hardest problem was **making downloads work in production, not on localhost.** The app could **stream and download fine locally** (residential IP), but on the cloud, **YouTube throttles or “downgrades”** responses for **datacenter** and many **proxy** IPs so **yt-dlp** only saw **storyboard** formats and failed with *“Requested format is not available.”* I went through the full matrix: **no proxy** (blocked), then **residential** and **ISP** HTTP proxies, correct **URL encoding** and **407** auth issues, and still hit blocked or downgraded API paths; the reliable workaround was to **stop relying on a good cloud IP** and **expose the local backend** with a **Cloudflare quick tunnel** (or a **named tunnel** after adding a **cheap domain** to Cloudflare) so **yt-dlp** runs against a **trusted home IP** while the phone uses a stable **HTTPS** URL. That taught me that **“works on my machine”** often means **IP reputation**, not code—and that **streaming** (`--get-url`) and **downloading** (full DASH/segment pull) are **different risk profiles** for YouTube.
-
----
+Download the latest APK: **[Download APK](https://drive.google.com/file/d/1gEdhr837j26wb1u0ZoxRAdXawVsEVNXC/view?usp=sharing)** 🚀
 
 ## Tech stack
 
 **App (React Native)**
 
-![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)&nbsp;
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)&nbsp;
-![React Navigation](https://img.shields.io/badge/React_Navigation-6C63FF?style=for-the-badge&logo=react&logoColor=white)&nbsp;
+React Native 
+TypeScript 
+React Navigation 
 
 - **Playback:** [react-native-track-player](https://github.com/doublesymmetry/react-native-track-player) (lock screen / notification controls, queue)
 - **Lyrics:** [lrclib.net](https://lrclib.net/) API (search + get-by-track), with title cleanup for YouTube-style strings
@@ -37,12 +23,12 @@ The hardest problem was **making downloads work in production, not on localhost.
 
 - **Node.js** + **Express** + **TypeScript**
 - **yt-dlp** for search, **stream URLs** (`/stream-url` with coalesced resolution), and **downloads** (`/download` by piping **yt-dlp stdout**)
-- Optional **`YTDLP_PROXY`** and **`cookies.txt`** for extraction when cloud IPs are restricted
+- Optional `**YTDLP_PROXY`** and `**cookies.txt`** for extraction when cloud IPs are restricted
 
 **Platforms**
 
-![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)&nbsp;
-![iOS](https://img.shields.io/badge/iOS-000000?style=for-the-badge&logo=ios&logoColor=white)&nbsp;
+Android 
+iOS 
 
 ---
 
@@ -59,18 +45,37 @@ The hardest problem was **making downloads work in production, not on localhost.
 
 ---
 
+## 📌 Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="src/assets/Screenshots/home.PNG" alt="Player" width="240"/></td>
+    <td align="center" width="33%"><img src="src/assets/Screenshots/search.PNG" alt="Search" width="240"/></td>
+    <td align="center" width="33%"><img src="src/assets/Screenshots/library.PNG" alt="Library" width="240"/></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="src/assets/Screenshots/downloads.PNG" alt="Downloads" width="240"/></td>
+    <td align="center"><img src="src/assets/Screenshots/queue.PNG" alt="Queue" width="240"/></td>
+    <td align="center"><img src="src/assets/Screenshots/lyrics.PNG" alt="Lyrics" width="240"/></td>
+  </tr>
+</table>
+
+---
+
 ## Project layout
 
-| Path | Purpose |
-|------|---------|
-| `src/App.tsx` | Navigation stack, splash until player is ready |
-| `src/screens/` | Player, library, search, queue, lyrics, full albums/songs |
-| `src/services/streamService.ts` | Backend base URL, `searchYouTube`, `getStreamUrl`, health ping |
-| `src/services/downloadService.ts` | Device download path, progress events, metadata |
-| `src/services/lyricsService.ts` | LRCLib search/get + title normalization |
-| `src/services/musicPlayerServices.ts` | Track Player setup and helpers |
-| `backend/src/server.ts` | Express: `/health`, `/search`, `/stream-url`, `/download`, debug routes |
-| `render.yaml` | Example deploy config for the backend (adjust env vars for your host) |
+
+| Path                                  | Purpose                                                                 |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| `src/App.tsx`                         | Navigation stack, splash until player is ready                          |
+| `src/screens/`                        | Player, library, search, queue, lyrics, full albums/songs               |
+| `src/services/streamService.ts`       | Backend base URL, `searchYouTube`, `getStreamUrl`, health ping          |
+| `src/services/downloadService.ts`     | Device download path, progress events, metadata                         |
+| `src/services/lyricsService.ts`       | LRCLib search/get + title normalization                                 |
+| `src/services/musicPlayerServices.ts` | Track Player setup and helpers                                          |
+| `backend/src/server.ts`               | Express: `/health`, `/search`, `/stream-url`, `/download`, debug routes |
+| `render.yaml`                         | Example deploy config for the backend (adjust env vars for your host)   |
+
 
 ---
 
@@ -136,13 +141,15 @@ npm run ios
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm start` | Metro bundler |
+
+| Command           | Description    |
+| ----------------- | -------------- |
+| `npm start`       | Metro bundler  |
 | `npm run android` | Run on Android |
-| `npm run ios` | Run on iOS |
-| `npm test` | Jest |
-| `npm run lint` | ESLint |
+| `npm run ios`     | Run on iOS     |
+| `npm test`        | Jest           |
+| `npm run lint`    | ESLint         |
+
 
 ---
 
@@ -152,10 +159,10 @@ This project is licensed under the MIT License.
 
 ---
 
-<h2>Contact</h2>
+## Contact
 
-[![linkedin](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/akshat-jaiswal-4664a2197)
+[linkedin](https://www.linkedin.com/in/akshat-jaiswal-4664a2197)
 
 © 2026 Akshat Jaiswal
 
-[![forthebadge](https://forthebadge.com/images/badges/built-with-love.svg)](https://forthebadge.com)
+[forthebadge](https://forthebadge.com)
