@@ -300,7 +300,7 @@ function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor:   COLORS.secondary,
+        tabBarActiveTintColor:   COLORS.playing,
         tabBarInactiveTintColor: COLORS.textLight,
         tabBarBackground: () => <TabBarBackground />,
         tabBarStyle: {

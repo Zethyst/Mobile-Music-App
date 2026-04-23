@@ -194,7 +194,7 @@ export const libraryArtistSpotlights = [
   {
     id: 'spotlight-dev',
     name: 'Akshat Jaiswal',
-    listeners: 'Stuck somewhere?',
+    listeners: 'Download not working? Get support here',
     coverUri: assetUri(developer),
     /** Opens WhatsApp app when installed (`whatsapp://`). */
     contactAppLink:

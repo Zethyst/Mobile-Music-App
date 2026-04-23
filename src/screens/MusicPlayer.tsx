@@ -6,7 +6,10 @@ import {
   Animated,
   Easing,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -36,6 +39,8 @@ const AnimatedIcon = Animated.createAnimatedComponent(Icon);
 
 export default function MusicPlayer({ navigation }: Props) {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   const track = useActiveTrack();
   const playbackState = usePlaybackState();
   const isPlaying = playbackState.state === PlaybackState.Playing;
@@ -168,11 +173,24 @@ export default function MusicPlayer({ navigation }: Props) {
     return () => loop.stop();
   }, [rainbowHue]);
 
+  // Compact layout for small screens (OnePlus 6 and similar ~600dp height devices)
+  const isSmallScreen = windowHeight < 680;
+
+  // Reserve space above the bottom tab bar + system nav/gesture inset (transparent tab bar can overlap content)
+  const playerBottomPad =
+    tabBarHeight +
+    (Platform.OS === 'android' ? Math.max(insets.bottom, 0) + 10 : 6);
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <PanGestureHandler onHandlerStateChange={onPlayerPan}>
         <View style={[styles.playerScrollContent, { flex: 1 }]}>
-          <View style={[styles.screenContainer, styles.playerScreenLayout]}>
+          <View style={[
+            styles.screenContainer,
+            styles.playerScreenLayout,
+            isSmallScreen && { marginVertical: 4, padding: 16 },
+            { paddingBottom: (isSmallScreen ? 16 : 24) + playerBottomPad },
+          ]}>
             <View style={styles.headerRow}>
               <TouchableOpacity
                 onPress={() => navigation.navigate('Main', { screen: 'Library' })}

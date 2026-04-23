@@ -89,11 +89,12 @@ app.get('/health', async (_req, res) => {
 app.get('/debug-formats', async (req: Request, res: Response) => {
   const videoId = req.query.videoId as string;
   const noCookies = req.query.noCookies === '1';
+  const noProxy = req.query.noProxy === '1';
   if (!videoId) return res.status(400).json({ error: 'Missing videoId' });
 
   try {
     const bin = ytDlpBin();
-    const proxy = process.env.YTDLP_PROXY || '';
+    const proxy = noProxy ? '' : (process.env.YTDLP_PROXY || '');
     const proxyArg = proxy ? `--proxy "${proxy}"` : '';
     const cookieArg = noCookies ? '' : cookiesFlag;
     const { stdout, stderr } = await run(
@@ -178,22 +179,18 @@ app.get('/download', (req: Request, res: Response) => {
   }
 
   const bin = ytDlpBin();
-  // Read proxy at request time (not module load) to pick up env var changes
-  const proxy = process.env.YTDLP_PROXY || '';
   const args: string[] = [
     ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
-    ...(proxy ? ['--proxy', proxy] : []),
     '--no-warnings',
     '--no-cache-dir',
-    // ba = bestaudio, b = best (fallback to muxed if no audio-only available).
-    // Let yt-dlp auto-select player clients — explicit restrictions cause failures.
-    '--format', 'ba/b',
+    // Prefer m4a (AAC) for iOS AVFoundation compatibility; webm/opus only plays on Android.
+    '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best',
     '--no-playlist',
     '-o', '-',
     `https://www.youtube.com/watch?v=${videoId}`,
   ];
 
-  console.log('[download] spawning yt-dlp', { reqId, videoId, bin, proxy: proxy ? '(set)' : '(empty)', args: args.join(' ') });
+  console.log('[download] spawning yt-dlp', { reqId, videoId, bin, args: args.join(' ') });
 
   const ytdlp = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 

@@ -208,7 +208,7 @@ export default function MusicLibrary({ navigation }: Props) {
                           </Text>
                           <Text
                             style={styles.bannerCarouselListeners}
-                            numberOfLines={1}>
+                            numberOfLines={2}>
                             {artist.listeners}
                           </Text>
                         </View>

@@ -45,19 +45,12 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     flexGrow: 1,
     paddingVertical: 8,
-    ...Platform.select({
-      ios: {},
-      default: { transform: [{ translateY: -14 }] },
-    }),
   },
   playerControlsBlock: {
     width: '100%',
     alignItems: 'stretch',
     gap: 12,
-    ...Platform.select({
-      ios: {},
-      default: { transform: [{ translateY: -14 }] },
-    }),
+    paddingBottom: 12,
   },
 
   // ── Cards ─────────────────────────────────────────────────

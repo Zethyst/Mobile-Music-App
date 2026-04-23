@@ -4,10 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const DOWNLOAD_PROGRESS_EVENT = 'musicapp_download_progress';
 
-const BACKEND = 'https://mobile-music-app.onrender.com';
+// For downloads, use local tunnel (ngrok/cloudflare) since cloud IPs are blocked
+// Replace with your ngrok/cloudflare URL, e.g.: https://abc123.ngrok-free.app
 // const BACKEND = __DEV__
-//   ? 'http://10.0.2.2:8000' // Android emulator → host machine (use LAN IP for a real device e.g. http://192.168.x.x:8000)
-//   : 'https://mobile-music-app.onrender.com';
+//   ? 'http://10.0.2.2:8000'
+//   : 'https://www.zethyst.online'; // TODO: Replace with tunnel URL for downloads
+const BACKEND = 'https://www.zethyst.online';
 
 const DOWNLOADS_DIR = `${RNFS.DocumentDirectoryPath}/downloads`;
 const METADATA_KEY = 'downloaded_tracks_v1';
@@ -108,8 +110,13 @@ export async function downloadTrackToDevice(item: DownloadRequest): Promise<Down
     progress: res => {
       const { bytesWritten, contentLength } = res;
       if (contentLength > 0) {
+        // Known size — emit exact percentage
         const pct = Math.min(99, Math.round((bytesWritten / contentLength) * 100));
         emitProgress(item.videoId, pct);
+      } else {
+        // Chunked / unknown size (yt-dlp pipe) — emit -1 so the UI shows
+        // an indeterminate bar instead of nothing
+        emitProgress(item.videoId, -1);
       }
     },
   });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,11 @@ import {
   DeviceEventEmitter,
   Modal,
   Pressable,
+  Animated,
+  Easing,
 } from 'react-native';
 import TrackPlayer, { useActiveTrack } from 'react-native-track-player';
+import LinearGradient from 'react-native-linear-gradient';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -50,6 +53,9 @@ const isLibraryOrEmptyQueue = (queue: Awaited<ReturnType<typeof TrackPlayer.getQ
 // Survives component unmount so state is restored when navigating back
 const cache = { query: '', results: [] as SearchResult[] };
 
+/** Dev-only: set to `true` to preview the indeterminate bar on the first search result, then set back to `false`. */
+const PREVIEW_SHIMMER_BAR = __DEV__ && false;
+
 export default function SearchScreen({ navigation }: Props) {
   const [query, setQuery] = useState(cache.query);
   const [results, setResults] = useState<SearchResult[]>(cache.results);
@@ -71,8 +77,9 @@ export default function SearchScreen({ navigation }: Props) {
       DOWNLOAD_PROGRESS_EVENT,
       (e: { videoId: string; percent: number }) => {
         setDownloadProgress(prev => {
-          if (e.percent >= 100) {
-            const { [e.videoId]: _, ...rest } = { ...prev, [e.videoId]: e.percent };
+          if (e.percent >= 100 || e.percent === 0) {
+            // Remove from map on completion or reset
+            const { [e.videoId]: _, ...rest } = prev;
             return rest;
           }
           return { ...prev, [e.videoId]: e.percent };
@@ -221,6 +228,23 @@ export default function SearchScreen({ navigation }: Props) {
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
+  // Indeterminate shimmer for downloads where content-length is unknown (chunked pipe)
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(shimmerAnim, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ).start();
+  }, [shimmerAnim]);
+  const shimmerTranslate = shimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-300, 300],
+  });
+
   return (
     <ScreenWithMiniPlayer>
       <BackSwipeContainer onBack={() => navigation.goBack()}>
@@ -291,7 +315,12 @@ export default function SearchScreen({ navigation }: Props) {
                 const isLoading = loadingId === item.videoId;
                 const isDlBusy = downloadLoadingId === item.videoId;
                 const isAdded = addedIds.has(item.videoId);
-                const pct = downloadProgress[item.videoId];
+                const pctFromDl = downloadProgress[item.videoId];
+                const pct = pctFromDl ?? (
+                  PREVIEW_SHIMMER_BAR && results[0]?.videoId === item.videoId
+                    ? -1
+                    : undefined
+                );
                 return (
                   <View
                     key={item.videoId}
@@ -337,12 +366,37 @@ export default function SearchScreen({ navigation }: Props) {
 
                     {pct !== undefined && pct < 100 && (
                       <View style={srStyles.progressTrack}>
-                        <View
-                          style={[
-                            srStyles.progressFill,
-                            { width: `${pct}%`, backgroundColor: COLORS.primary },
-                          ]}
-                        />
+                        {pct === -1 ? (
+                          // Indeterminate shimmer — chunked stream, no Content-Length
+                          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 99 }]}>
+                            <Animated.View
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                bottom: 0,
+                                width: '45%',
+                                transform: [{ translateX: shimmerTranslate }],
+                              }}>
+                              <LinearGradient
+                                colors={['transparent', COLORS.primary, COLORS.secondary, COLORS.primary, 'transparent']}
+                                locations={[0, 0.2, 0.5, 0.8, 1]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={StyleSheet.absoluteFill}
+                              />
+                            </Animated.View>
+                          </View>
+                        ) : (
+                          // Determinate — gradient fill + rounded cap
+                          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 99 }]}>
+                            <LinearGradient
+                              colors={[COLORS.primary, COLORS.secondary]}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 0 }}
+                              style={[StyleSheet.absoluteFill, { right: `${100 - pct}%` }]}
+                            />
+                          </View>
+                        )}
                       </View>
                     )}
                   </View>
@@ -520,13 +574,12 @@ const srStyles = StyleSheet.create({
   },
   progressTrack: {
     width: '100%',
-    height: 2,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    marginBottom: 4,
-    marginTop: 2,
-  },
-  progressFill: {
-    height: 2,
+    height: 3,
+    backgroundColor: 'rgba(82,50,193,0.12)',
+    borderRadius: 99,
+    marginTop: 4,
+    marginBottom: 6,
+    overflow: 'hidden',
   },
   iconBtn: {
     paddingHorizontal: 12,

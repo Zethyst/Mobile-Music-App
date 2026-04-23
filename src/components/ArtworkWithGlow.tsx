@@ -3,9 +3,10 @@ import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { DEFAULT_COVER_URI } from '../constants';
 
-const { width } = Dimensions.get('window');
+const { width, height: screenHeight } = Dimensions.get('window');
 
-const ARTWORK_SIZE = width * 0.72;
+// On small screens (OnePlus 6 ~720dp height) shrink artwork so controls are visible
+const ARTWORK_SIZE = screenHeight < 680 ? width * 0.56 : width * 0.72;
 const PAD          = 64;                        // ambient glow beyond the disc
 const CONTAINER    = ARTWORK_SIZE + PAD * 2;
 const HALF         = CONTAINER / 2;
