@@ -68,6 +68,16 @@ function summarizeResolvedStream(stdout: string): Record<string, unknown> {
     out.queryParamKeys = [...u.searchParams.keys()].slice(0, 20);
     const host = u.hostname.toLowerCase();
     out.looksLikeGoogleVideo = host.includes('googlevideo.') || host.includes('gvt1.');
+    const itag = u.searchParams.get('itag');
+    if (itag) out.itag = itag;
+    const ipParam = u.searchParams.get('ip');
+    if (ipParam) {
+      out.ipParamPresent = true;
+      // Mask for logs — CDN URLs minted via proxy often embed the proxy exit IP; phone IP mismatch → 403.
+      out.ipParamMasked = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ipParam)
+        ? ipParam.replace(/^(\d{1,3}\.\d{1,3})\.\d+\.\d+$/, '$1.x.x')
+        : `${ipParam.slice(0, 10)}…(${ipParam.length}b)`;
+    }
   } catch {
     out.parseableAsUrl = false;
     out.firstLinePrefix = first.slice(0, 96);
@@ -244,72 +254,90 @@ app.get('/stream-url', async (req: Request, res: Response) => {
   }
 });
 
-/** Download endpoint: spawns yt-dlp with -o - (stdout) and pipes audio bytes directly
- *  to the client. yt-dlp manages all CDN auth/fingerprinting internally, avoiding 403s
- *  that occur when Node's fetch() tries to re-use a URL resolved by yt-dlp. */
-app.get('/download', (req: Request, res: Response) => {
-  const videoId = req.query.videoId as string;
-  const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+type PipeMode = 'download' | 'stream-pipe';
 
-  console.log('[download] start', {
+/** Spawns yt-dlp `-o -` and pipes stdout to the HTTP response.
+ *  `stream-pipe` adds the same proxy / extractor-args as `/stream-url` so Render matches resolution.
+ *  `download` keeps the minimal arg set (tunnel / local). */
+function pipeYtdlpAudio(req: Request, res: Response, videoId: string, mode: PipeMode): void {
+  const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const logTag = mode === 'download' ? '[download]' : '[stream-pipe]';
+
+  console.log(`${logTag} start`, {
     reqId,
     videoId,
     userAgent: req.get('user-agent')?.slice(0, 120),
   });
 
   if (!videoId || !/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) {
-    console.warn('[download] bad/missing videoId', { reqId, videoId });
-    return res.status(400).json({ error: 'Missing or invalid videoId' });
+    console.warn(`${logTag} bad/missing videoId`, { reqId, videoId });
+    res.status(400).json({ error: 'Missing or invalid videoId' });
+    return;
   }
 
   const bin = ytDlpBin();
-  const args: string[] = [
-    ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
-    '--no-warnings',
-    '--no-cache-dir',
-    // Prefer m4a (AAC) for iOS AVFoundation compatibility; webm/opus only plays on Android.
-    '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best',
-    '--no-playlist',
-    '-o', '-',
-    `https://www.youtube.com/watch?v=${videoId}`,
-  ];
+  const args: string[] =
+    mode === 'download'
+      ? [
+          ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
+          '--no-warnings',
+          '--no-cache-dir',
+          '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best',
+          '--no-playlist',
+          '-o', '-',
+          `https://www.youtube.com/watch?v=${videoId}`,
+        ]
+      : [
+          ...(cookiesFlag ? ['--cookies', cookiesPath] : []),
+          ...(PROXY ? ['--proxy', PROXY] : []),
+          ...(process.env.YTDLP_JS_RUNTIME
+            ? ['--js-runtimes', process.env.YTDLP_JS_RUNTIME]
+            : []),
+          '--no-warnings',
+          '--no-cache-dir',
+          '--extractor-args', 'youtube:player_client=tv_embedded,ios,mweb',
+          '--format', 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best',
+          '--no-playlist',
+          '-o', '-',
+          `https://www.youtube.com/watch?v=${videoId}`,
+        ];
 
-  console.log('[download] spawning yt-dlp', { reqId, videoId, bin, args: args.join(' ') });
+  console.log(`${logTag} spawning yt-dlp`, { reqId, videoId, bin, mode });
 
   const ytdlp = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
   let stderrBuf = '';
   ytdlp.stderr.on('data', (chunk: Buffer) => {
-    const text = chunk.toString();
-    stderrBuf += text;
+    stderrBuf += chunk.toString();
   });
 
-  // Send headers immediately so the client (RNFS) doesn't time out waiting for
-  // a response while yt-dlp is still in its pre-download phase (e.g. JS challenge
-  // solving, rate-limit sleeps). The body follows once yt-dlp starts outputting.
   res.setHeader('Content-Type', 'audio/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
+  res.setHeader(
+    'Content-Disposition',
+    mode === 'download'
+      ? `attachment; filename="${videoId}.m4a"`
+      : `inline; filename="${videoId}.m4a"`,
+  );
   res.setHeader('Transfer-Encoding', 'chunked');
   res.status(200);
-  // Flush the headers to the socket immediately
   res.flushHeaders();
   ytdlp.stdout.pipe(res);
 
   ytdlp.stdout.once('data', () => {
-    console.log('[download] first bytes piped to client', { reqId, videoId });
+    console.log(`${logTag} first bytes to client`, { reqId, videoId });
   });
 
   ytdlp.on('close', (code) => {
     const stderr = stderrBuf.slice(-800);
     if (code === 0) {
-      console.log('[download] yt-dlp done', { reqId, videoId });
+      console.log(`${logTag} yt-dlp done`, { reqId, videoId });
     } else {
-      console.error('[download] yt-dlp non-zero exit', { reqId, videoId, code, stderr });
+      console.error(`${logTag} yt-dlp non-zero exit`, { reqId, videoId, code, stderr });
     }
   });
 
   ytdlp.on('error', (err) => {
-    console.error('[download] spawn error', { reqId, videoId, err });
+    console.error(`${logTag} spawn error`, { reqId, videoId, err });
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to start yt-dlp' });
     }
@@ -317,10 +345,27 @@ app.get('/download', (req: Request, res: Response) => {
 
   req.on('close', () => {
     if (!res.writableEnded) {
-      console.log('[download] client disconnected, killing yt-dlp', { reqId, videoId });
+      console.log(`${logTag} client disconnected, killing yt-dlp`, { reqId, videoId });
       ytdlp.kill('SIGTERM');
     }
   });
+}
+
+/** Same as `/download` — kept as a thin wrapper for clarity. */
+app.get('/download', (req: Request, res: Response) => {
+  const videoId = req.query.videoId as string;
+  pipeYtdlpAudio(req, res, videoId, 'download');
+});
+
+/** Progressive playback: phone streams from *this* URL only. yt-dlp talks to YouTube on the server,
+ *  avoiding googlevideo URLs that are bound to the proxy / resolver IP (device then gets 403). */
+app.get('/stream-pipe', (req: Request, res: Response) => {
+  const videoId = req.query.videoId as string;
+  console.log('[stream-pipe] HTTP request', {
+    videoId,
+    xForwardedFor: req.get('x-forwarded-for')?.split(',')[0]?.trim()?.slice(0, 64),
+  });
+  pipeYtdlpAudio(req, res, videoId, 'stream-pipe');
 });
 
 app.listen(PORT, () => console.log(`[+] Server running on port ${PORT}`));
