@@ -4,12 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const DOWNLOAD_PROGRESS_EVENT = 'musicapp_download_progress';
 
-// For downloads, use local tunnel (ngrok/cloudflare) since cloud IPs are blocked
-// Replace with your ngrok/cloudflare URL, e.g.: https://abc123.ngrok-free.app
-// const BACKEND = __DEV__
-//   ? 'http://10.0.2.2:8000'
-//   : 'https://www.zethyst.online'; // TODO: Replace with tunnel URL for downloads
-const BACKEND = 'https://www.zethyst.online';
+import { DOWNLOAD_BACKEND as BACKEND } from './apiBase';
 
 const DOWNLOADS_DIR = `${RNFS.DocumentDirectoryPath}/downloads`;
 const METADATA_KEY = 'downloaded_tracks_v1';
