@@ -1,4 +1,4 @@
-import { STREAM_BACKEND as BACKEND } from './apiBase';
+import { STREAM_BACKEND_LOCAL as BACKEND } from './apiBase';
 
 /** Triggers GET /health so cold hosts (e.g. Render) spin up; failures are ignored. */
 export function pingHealthCheck(): void {
