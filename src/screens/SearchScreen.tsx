@@ -33,11 +33,17 @@ import {
   hapticLight,
   hapticMedium,
   hapticSuccess,
+  hapticWarning,
 } from '../utils/haptics';
+import { track as analyticsTrack } from '../utils/analytics';
 import {
   downloadTrackToDevice,
   DOWNLOAD_PROGRESS_EVENT,
 } from '../services/downloadService';
+import AddToPlaylistModal from '../components/AddToPlaylistModal';
+import CreatePlaylistModal from '../components/CreatePlaylistModal';
+import { usePlaylists } from '../contexts/PlaylistContext';
+import type { PlaylistTrack } from '../services/playlistService';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, 'Search'>,
@@ -67,6 +73,15 @@ export default function SearchScreen({ navigation }: Props) {
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [menuItem, setMenuItem] = useState<SearchResult | null>(null);
   const activeTrack = useActiveTrack();
+  const { addTrack, createNew } = usePlaylists();
+  const [addToPlaylistItem, setAddToPlaylistItem] = useState<SearchResult | null>(null);
+  const [showCreateForSearch, setShowCreateForSearch] = useState(false);
+  /** YouTube track already in the player queue — reuse its stream URL for playlist add (no extra getStreamUrl). */
+  const playlistStreamFromQueueRef = useRef<{
+    videoId: string;
+    url: string;
+    headers?: Record<string, string>;
+  } | null>(null);
 
   // Keep cache in sync whenever state changes
   useEffect(() => { cache.query = query; }, [query]);
@@ -89,6 +104,51 @@ export default function SearchScreen({ navigation }: Props) {
     return () => sub.remove();
   }, []);
 
+  /** Resolves stream URL, persists to playlist, then haptics + alert. Clears `playlistStreamFromQueueRef` in `finally`. */
+  const addSearchResultToPlaylist = async (playlistId: string, item: SearchResult, streamUrl?: string, streamHeaders?: Record<string, string>) => {
+    try {
+      let url = streamUrl;
+      let headers = streamHeaders;
+      if (!url) {
+        const fromQueue = playlistStreamFromQueueRef.current;
+        if (fromQueue?.videoId === item.videoId && fromQueue.url) {
+          url = fromQueue.url;
+          headers = fromQueue.headers ?? {};
+        } else {
+          const stream: StreamInfo | null = await getStreamUrl(item.videoId);
+          if (stream) {
+            url = stream.url;
+            headers = stream.headers;
+          }
+        }
+      }
+      const track: Omit<PlaylistTrack, 'addedAt'> = {
+        videoId: item.videoId,
+        title: item.title,
+        artist: item.artist,
+        thumbnail: item.thumbnail,
+        duration: item.duration,
+        streamUrl: url,
+        streamHeaders: headers,
+      };
+      await addTrack(playlistId, track);
+      hapticSuccess();
+    } catch {
+      hapticWarning();
+      setTimeout(
+        () => Alert.alert('Could not add to playlist', 'Check your network and try again.'),
+        0,
+      );
+    } finally {
+      playlistStreamFromQueueRef.current = null;
+    }
+  };
+
+  /** Fire-and-forget: modal can close while stream URL is still resolving. */
+  const queueAddToPlaylist = (playlistId: string, item: SearchResult) => {
+    void addSearchResultToPlaylist(playlistId, item);
+  };
+
   const handleSearch = async () => {
     Keyboard.dismiss();
     if (!query.trim()) return;
@@ -96,8 +156,13 @@ export default function SearchScreen({ navigation }: Props) {
     setLoading(true);
     setResults([]);
     try {
+      const q = query.trim();
       const r = await searchYouTube(query);
       setResults(r);
+      analyticsTrack('song_search', {
+        query: q,
+        results_count: r.length,
+      });
     } catch {
       setTimeout(() => Alert.alert('Search failed', 'Could not reach the server. Check your connection.'), 0);
     } finally {
@@ -117,12 +182,12 @@ export default function SearchScreen({ navigation }: Props) {
   }, []);
 
   const buildTrack = (item: SearchResult, stream: StreamInfo) => ({
-    id:       item.videoId,
-    url:      stream.url,
-    headers:  stream.headers,
-    title:    item.title,
-    artist:   item.artist,
-    artwork:  item.thumbnail,
+    id: item.videoId,
+    url: stream.url,
+    headers: stream.headers,
+    title: item.title,
+    artist: item.artist,
+    artwork: item.thumbnail,
     duration: item.duration ?? 0,
   });
 
@@ -203,6 +268,21 @@ export default function SearchScreen({ navigation }: Props) {
   const showTrackMenu = (item: SearchResult) => {
     hapticLight();
     setMenuItem(item);
+    void (async () => {
+      try {
+        const queue = await TrackPlayer.getQueue();
+        const qTrack = queue.find(t => String(t.id) === item.videoId);
+        const u = qTrack && typeof qTrack.url === 'string' ? qTrack.url : '';
+        if (u) {
+          const h = (qTrack as { headers?: Record<string, string> | undefined })?.headers;
+          playlistStreamFromQueueRef.current = { videoId: item.videoId, url: u, headers: h };
+        } else {
+          playlistStreamFromQueueRef.current = null;
+        }
+      } catch {
+        playlistStreamFromQueueRef.current = null;
+      }
+    })();
   };
 
   const closeTrackMenu = () => setMenuItem(null);
@@ -248,208 +328,251 @@ export default function SearchScreen({ navigation }: Props) {
   return (
     <ScreenWithMiniPlayer>
       <BackSwipeContainer onBack={() => navigation.goBack()}>
-      <View style={searchScreenStyles.root}>
-      <ScrollView
-        style={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.libraryStackScrollContent}>
-        <View style={styles.screenContainer}>
+        <View style={searchScreenStyles.root}>
+          <ScrollView
+            style={styles.container}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.libraryStackScrollContent}>
+            <View style={styles.screenContainer}>
 
-          {/* Header */}
-          <View style={styles.headerRow}>
-            <TouchableOpacity
-              onPress={() => {
-                hapticLight();
-                navigation.goBack();
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Back">
-              <Icon name="arrow-left" size={20} color="#444" />
-            </TouchableOpacity>
-            <Text style={styles.nowPlayingTitle}>Search</Text>
-            <TouchableOpacity
-              onPress={() => {
-                hapticLight();
-                navigation.navigate('Queue');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Open queue">
-              <Icon name="list-ul" size={20} color="#444" />
-            </TouchableOpacity>
+              {/* Header */}
+              <View style={styles.headerRow}>
+                <TouchableOpacity
+                  onPress={() => {
+                    hapticLight();
+                    navigation.goBack();
+                  }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back">
+                  <Icon name="arrow-left" size={20} color="#444" />
+                </TouchableOpacity>
+                <Text style={styles.nowPlayingTitle}>Search</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    hapticLight();
+                    navigation.navigate('Queue');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open queue">
+                  <Icon name="list-ul" size={20} color="#444" />
+                </TouchableOpacity>
 
-            <View style={{ width: 20 }} />
-          </View>
+                <View style={{ width: 20 }} />
+              </View>
 
-          {/* Search bar */}
-          <View style={searchRow}>
-            <TextInput
-              style={input}
-              placeholder="Search any song or artist…"
-              placeholderTextColor={COLORS.textLight}
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={handleSearch}
-              returnKeyType="search"
-            />
-            <TouchableOpacity
-              style={searchBtn}
-              onPress={() => void handleSearch()}
-              activeOpacity={0.8}>
-              <Icon name="search" size={15} color={COLORS.white} />
-            </TouchableOpacity>
-          </View>
+              {/* Search bar */}
+              <View style={searchRow}>
+                <TextInput
+                  style={input}
+                  placeholder="Search any song or artist…"
+                  placeholderTextColor={COLORS.textLight}
+                  value={query}
+                  onChangeText={setQuery}
+                  onSubmitEditing={handleSearch}
+                  returnKeyType="search"
+                />
+                <TouchableOpacity
+                  style={searchBtn}
+                  onPress={() => void handleSearch()}
+                  activeOpacity={0.8}>
+                  <Icon name="search" size={15} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
 
-          {/* Results */}
-          {loading ? (
-            <ActivityIndicator color={COLORS.primary} style={{ marginTop: 48 }} size="large" />
-          ) : results.length === 0 ? (
-            <Text style={hint}>
-              {query.trim() ? 'No results found.' : 'Search for any song to stream it instantly.'}
-            </Text>
-          ) : (
-            <View style={styles.trackList}>
-              {results.map(item => {
-                const isPlaying = activeTrack?.id === item.videoId;
-                const isLoading = loadingId === item.videoId;
-                const isDlBusy = downloadLoadingId === item.videoId;
-                const isAdded = addedIds.has(item.videoId);
-                const pctFromDl = downloadProgress[item.videoId];
-                const pct = pctFromDl ?? (
-                  PREVIEW_SHIMMER_BAR && results[0]?.videoId === item.videoId
-                    ? -1
-                    : undefined
-                );
-                return (
-                  <View
-                    key={item.videoId}
-                    style={srStyles.trackWrap}>
-                    <View style={[styles.trackItem, { borderBottomWidth: 0 }, isPlaying && styles.trackItemPlaying]}>
-                      <TouchableOpacity
-                        style={srStyles.mainTap}
-                        onPress={() => handlePlayNow(item)}
-                        activeOpacity={0.7}
-                        disabled={isLoading || isDlBusy}>
-                        <Image source={{ uri: item.thumbnail }} style={styles.trackThumb} />
-                        <View style={styles.trackInfo}>
-                          <Text
-                            style={[styles.trackTitle, isPlaying && styles.trackTitlePlaying]}
-                            numberOfLines={1}>
-                            {item.title}
-                          </Text>
-                          <Text style={styles.trackArtist} numberOfLines={1}>
-                            {item.artist}
-                          </Text>
-                          {item.duration ? (
-                            <Text style={styles.trackArtist}>{formatDuration(item.duration)}</Text>
-                          ) : null}
+              {/* Results */}
+              {loading ? (
+                <ActivityIndicator color={COLORS.primary} style={{ marginTop: 48 }} size="large" />
+              ) : results.length === 0 ? (
+                <Text style={hint}>
+                  {query.trim() ? 'No results found.' : 'Search for any song to stream it instantly.'}
+                </Text>
+              ) : (
+                <View style={styles.trackList}>
+                  {results.map(item => {
+                    const isPlaying = activeTrack?.id === item.videoId;
+                    const isLoading = loadingId === item.videoId;
+                    const isDlBusy = downloadLoadingId === item.videoId;
+                    const isAdded = addedIds.has(item.videoId);
+                    const pctFromDl = downloadProgress[item.videoId];
+                    const pct = pctFromDl ?? (
+                      PREVIEW_SHIMMER_BAR && results[0]?.videoId === item.videoId
+                        ? -1
+                        : undefined
+                    );
+                    return (
+                      <View
+                        key={item.videoId}
+                        style={srStyles.trackWrap}>
+                        <View style={[styles.trackItem, { borderBottomWidth: 0 }, isPlaying && styles.trackItemPlaying]}>
+                          <TouchableOpacity
+                            style={srStyles.mainTap}
+                            onPress={() => handlePlayNow(item)}
+                            activeOpacity={0.7}
+                            disabled={isLoading || isDlBusy}>
+                            <Image source={{ uri: item.thumbnail }} style={styles.trackThumb} />
+                            <View style={styles.trackInfo}>
+                              <Text
+                                style={[styles.trackTitle, isPlaying && styles.trackTitlePlaying]}
+                                numberOfLines={1}>
+                                {item.title}
+                              </Text>
+                              <Text style={styles.trackArtist} numberOfLines={1}>
+                                {item.artist}
+                              </Text>
+                              {item.duration ? (
+                                <Text style={styles.trackArtist}>{formatDuration(item.duration)}</Text>
+                              ) : null}
+                            </View>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.trackPlayingIcon}
+                            onPress={() => showTrackMenu(item)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            disabled={isLoading || isDlBusy}>
+                            {isLoading || isDlBusy ? (
+                              <ActivityIndicator size="small" color={COLORS.primary} />
+                            ) : isPlaying ? (
+                              <Icon name="volume-up" size={14} color={COLORS.playing} />
+                            ) : isAdded ? (
+                              <Icon name="check" size={14} color="#22c55e" solid />
+                            ) : (
+                              <Icon name="ellipsis-v" size={14} color={COLORS.primary} solid />
+                            )}
+                          </TouchableOpacity>
                         </View>
-                      </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={styles.trackPlayingIcon}
-                        onPress={() => showTrackMenu(item)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        disabled={isLoading || isDlBusy}>
-                        {isLoading || isDlBusy ? (
-                          <ActivityIndicator size="small" color={COLORS.primary} />
-                        ) : isPlaying ? (
-                          <Icon name="volume-up" size={14} color={COLORS.playing} />
-                        ) : isAdded ? (
-                          <Icon name="check" size={14} color="#22c55e" solid />
-                        ) : (
-                          <Icon name="ellipsis-v" size={14} color={COLORS.primary} solid />
-                        )}
-                      </TouchableOpacity>
-                    </View>
-
-                    {pct !== undefined && pct < 100 && (
-                      <View style={srStyles.progressTrack}>
-                        {pct === -1 ? (
-                          // Indeterminate shimmer — chunked stream, no Content-Length
-                          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 99 }]}>
-                            <Animated.View
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                bottom: 0,
-                                width: '45%',
-                                transform: [{ translateX: shimmerTranslate }],
-                              }}>
-                              <LinearGradient
-                                colors={['transparent', COLORS.primary, COLORS.secondary, COLORS.primary, 'transparent']}
-                                locations={[0, 0.2, 0.5, 0.8, 1]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={StyleSheet.absoluteFill}
-                              />
-                            </Animated.View>
-                          </View>
-                        ) : (
-                          // Determinate — gradient fill + rounded cap
-                          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 99 }]}>
-                            <LinearGradient
-                              colors={[COLORS.primary, COLORS.secondary]}
-                              start={{ x: 0, y: 0 }}
-                              end={{ x: 1, y: 0 }}
-                              style={[StyleSheet.absoluteFill, { right: `${100 - pct}%` }]}
-                            />
+                        {pct !== undefined && pct < 100 && (
+                          <View style={srStyles.progressTrack}>
+                            {pct === -1 ? (
+                              // Indeterminate shimmer — chunked stream, no Content-Length
+                              <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 99 }]}>
+                                <Animated.View
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    bottom: 0,
+                                    width: '45%',
+                                    transform: [{ translateX: shimmerTranslate }],
+                                  }}>
+                                  <LinearGradient
+                                    colors={['transparent', COLORS.primary, COLORS.secondary, COLORS.primary, 'transparent']}
+                                    locations={[0, 0.2, 0.5, 0.8, 1]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={StyleSheet.absoluteFill}
+                                  />
+                                </Animated.View>
+                              </View>
+                            ) : (
+                              // Determinate — gradient fill + rounded cap
+                              <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 99 }]}>
+                                <LinearGradient
+                                  colors={[COLORS.primary, COLORS.secondary]}
+                                  start={{ x: 0, y: 0 }}
+                                  end={{ x: 1, y: 0 }}
+                                  style={[StyleSheet.absoluteFill, { right: `${100 - pct}%` }]}
+                                />
+                              </View>
+                            )}
                           </View>
                         )}
                       </View>
-                    )}
-                  </View>
-                );
-              })}
+                    );
+                  })}
+                </View>
+              )}
+
             </View>
-          )}
-
+          </ScrollView>
+          <StreamRecoveryBanner />
         </View>
-      </ScrollView>
-      <StreamRecoveryBanner />
-      </View>
 
-      <Modal
-        visible={menuItem != null}
-        transparent
-        animationType="fade"
-        onRequestClose={closeTrackMenu}
-        statusBarTranslucent>
-        <View style={menuStyles.backdrop}>
-          <Pressable style={menuStyles.scrim} onPress={closeTrackMenu} />
-          <View style={menuStyles.sheet} accessibilityViewIsModal>
-            <Text style={menuStyles.menuTitle} numberOfLines={2}>
-              {menuItem?.title}
-            </Text>
-            <Text style={menuStyles.menuHint}>Choose an action</Text>
+        <Modal
+          visible={menuItem != null}
+          transparent
+          animationType="fade"
+          onRequestClose={closeTrackMenu}
+          statusBarTranslucent>
+          <View style={menuStyles.backdrop}>
+            <Pressable style={menuStyles.scrim} onPress={closeTrackMenu} />
+            <View style={menuStyles.sheet} accessibilityViewIsModal>
+              <Text style={menuStyles.menuTitle} numberOfLines={2}>
+                {menuItem?.title}
+              </Text>
+              <Text style={menuStyles.menuHint}>Choose an action</Text>
 
-            <TouchableOpacity
-              style={menuStyles.row}
-              onPress={onMenuAddToQueue}
-              activeOpacity={0.7}>
-              <Icon name="plus" size={16} color={COLORS.primary} solid />
-              <Text style={menuStyles.rowText}>Add to queue</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={menuStyles.row}
+                onPress={onMenuAddToQueue}
+                activeOpacity={0.7}>
+                <Icon name="plus" size={16} color={COLORS.primary} solid />
+                <Text style={menuStyles.rowText}>Add to queue</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={menuStyles.row}
-              onPress={onMenuDownload}
-              activeOpacity={0.7}>
-              <Icon name="cloud-download-alt" size={16} color={COLORS.primary} solid />
-              <Text style={menuStyles.rowText}>Download</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={menuStyles.row}
+                onPress={onMenuDownload}
+                activeOpacity={0.7}>
+                <Icon name="cloud-download-alt" size={16} color={COLORS.primary} solid />
+                <Text style={menuStyles.rowText}>Download</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={menuStyles.cancelRow}
-              onPress={closeTrackMenu}
-              activeOpacity={0.7}>
-              <Text style={menuStyles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={menuStyles.row}
+                onPress={() => {
+                  closeTrackMenu();
+                  setTimeout(() => setAddToPlaylistItem(menuItem), 300);
+                }}
+                activeOpacity={0.7}>
+                <Icon name="list-ul" size={16} color={COLORS.primary} solid />
+                <Text style={menuStyles.rowText}>Add to playlist</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={menuStyles.cancelRow}
+                onPress={closeTrackMenu}
+                activeOpacity={0.7}>
+                <Text style={menuStyles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
       </BackSwipeContainer>
+      <AddToPlaylistModal
+        visible={addToPlaylistItem != null}
+        onClose={() => {
+          playlistStreamFromQueueRef.current = null;
+          setAddToPlaylistItem(null);
+        }}
+        trackTitle={addToPlaylistItem?.title}
+        onSelectPlaylist={async (playlistId) => {
+          if (!addToPlaylistItem) return;
+          const item = addToPlaylistItem;
+          setAddToPlaylistItem(null);
+          queueAddToPlaylist(playlistId, item);
+        }}
+        onCreateNew={() => {
+          setAddToPlaylistItem(null);
+          setTimeout(() => setShowCreateForSearch(true), 350);
+        }}
+      />
+
+      <CreatePlaylistModal
+        visible={showCreateForSearch}
+        onClose={() => setShowCreateForSearch(false)}
+        onSave={async (data) => {
+          const pl = await createNew(data);
+          setShowCreateForSearch(false);
+          if (addToPlaylistItem) {
+            const item = addToPlaylistItem;
+            setAddToPlaylistItem(null);
+            queueAddToPlaylist(pl.id, item);
+          }
+        }}
+      />
     </ScreenWithMiniPlayer>
   );
 }

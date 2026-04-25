@@ -1,7 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  DeviceEventEmitter,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import TrackPlayer, {
+  useActiveTrack,
   usePlaybackState,
   State,
 } from 'react-native-track-player';
@@ -15,43 +23,115 @@ import {
   hapticHeavy,
   hapticLight,
   hapticMedium,
+  hapticSuccess,
 } from '../utils/haptics';
+import {
+  DOWNLOAD_PROGRESS_EVENT,
+  DOWNLOAD_SAVED_BANNER_EVENT,
+  downloadTrackToDevice,
+  getDownloads,
+  isTrackAvailableOffline,
+  isYoutubeStyleTrackId,
+} from '../services/downloadService';
 
 /** Shared neumorphic gradient colours matching the CSS spec */
 const NEUMORPH_GRADIENT: string[] = ['#cacaca', '#f8f4fc'];
 const NEUMORPH_ANGLE = { x: 0.15, y: 0 };        // ≈ 145 deg start
 const NEUMORPH_ANGLE_END = { x: 0.85, y: 1 };    // ≈ 145 deg end
 
-type NavProp = NativeStackNavigationProp<RootStackParamList>;
+/** Same as SongSlider muted (unplayed) / vivid (progress) track fills */
+const SLIDER_MUTED_GRADIENT = ['#5232c155', '#12ccd055'] as const;
+const SLIDER_VIVID_GRADIENT = ['#5232c1', '#12ccd0'] as const;
+const SLIDER_MUTED_GRADIENT_H = { start: { x: 0, y: 0.5 } as const, end: { x: 1, y: 0.5 } as const };
 
-const VOL_EPS = 0.001;
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ControlCenter() {
   const navigation = useNavigation<NavProp>();
+  const activeTrack = useActiveTrack();
   const playbackState = usePlaybackState();
   const isPlaying = playbackState.state === State.Playing;
-  const [isMuted, setIsMuted] = useState(false);
-  const volumeBeforeMuteRef = useRef(1);
+  const [downloadedYouTubeIds, setDownloadedYouTubeIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [downloadBusy, setDownloadBusy] = useState(false);
+
+  const refreshDownloadedIds = useCallback(async () => {
+    const list = await getDownloads();
+    setDownloadedYouTubeIds(new Set(list.map(t => t.videoId)));
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const v = await TrackPlayer.getVolume();
-        if (!cancelled) {
-          setIsMuted(v < VOL_EPS);
-          if (v >= VOL_EPS) {
-            volumeBeforeMuteRef.current = v;
-          }
-        }
-      } catch {
-        /* player may not be ready yet */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void refreshDownloadedIds();
+  }, [refreshDownloadedIds]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      DOWNLOAD_PROGRESS_EVENT,
+      (p: { percent: number }) => {
+        if (p.percent === 100) void refreshDownloadedIds();
+      },
+    );
+    return () => sub.remove();
+  }, [refreshDownloadedIds]);
+
+  const isOffline = isTrackAvailableOffline(activeTrack, downloadedYouTubeIds);
+  /** Muted = already on device or not downloadable; vivid = YouTube stream that can be saved. */
+  const useVividDownloadBg =
+    downloadBusy || (!isOffline && isYoutubeStyleTrackId(activeTrack?.id ?? null));
+  const downloadGradientColors = useVividDownloadBg
+    ? SLIDER_VIVID_GRADIENT
+    : SLIDER_MUTED_GRADIENT;
+
+  const handleDownloadPress = useCallback(async () => {
+    hapticLight();
+    if (isOffline) {
+      return;
+    }
+    if (!activeTrack?.id) return;
+    if (!isYoutubeStyleTrackId(activeTrack.id)) {
+      Alert.alert(
+        'Not available to download',
+        'Only songs from Search can be saved from here when streaming.',
+      );
+      return;
+    }
+    if (downloadBusy) return;
+    setDownloadBusy(true);
+    const art = activeTrack.artwork;
+    const thumb =
+      typeof art === 'string'
+        ? art
+        : art != null && typeof art === 'object' && 'uri' in art
+          ? String((art as { uri: string }).uri)
+          : '';
+    try {
+      await downloadTrackToDevice({
+        videoId: String(activeTrack.id),
+        title: activeTrack.title ?? 'Unknown',
+        artist: activeTrack.artist ?? 'Unknown',
+        thumbnail: thumb,
+        duration: typeof activeTrack.duration === 'number' ? activeTrack.duration : null,
+      });
+      hapticSuccess();
+      void refreshDownloadedIds();
+      DeviceEventEmitter.emit(DOWNLOAD_SAVED_BANNER_EVENT);
+    } catch (e) {
+      const isFormatError = e instanceof Error && e.message === 'FORMAT_UNAVAILABLE';
+      setTimeout(
+        () =>
+          Alert.alert(
+            'Download failed',
+            isFormatError
+              ? 'This track is not available for download.'
+              : 'Could not save the file. Try again.',
+          ),
+        0,
+      );
+    } finally {
+      setDownloadBusy(false);
+    }
+  }, [activeTrack, downloadBusy, isOffline, refreshDownloadedIds]);
 
   const skipToNext = async () => {
     hapticMedium();
@@ -72,28 +152,6 @@ export default function ControlCenter() {
       await TrackPlayer.play();
     }
   };
-
-  const toggleMute = useCallback(async () => {
-    try {
-      hapticLight();
-      if (isMuted) {
-        const restore =
-          volumeBeforeMuteRef.current >= VOL_EPS
-            ? volumeBeforeMuteRef.current
-            : 1;
-        await TrackPlayer.setVolume(restore);
-        setIsMuted(false);
-      } else {
-        const current = await TrackPlayer.getVolume();
-        volumeBeforeMuteRef.current =
-          current >= VOL_EPS ? current : 1;
-        await TrackPlayer.setVolume(0);
-        setIsMuted(true);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [isMuted]);
 
   return (
     <View style={styles.controlsRow}>
@@ -157,24 +215,43 @@ export default function ControlCenter() {
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* Volume: mute / restore player volume */}
+      {/* Download: vivid = can save; muted = already on device or not available from here */}
       <TouchableOpacity
         style={styles.iconBtn}
         activeOpacity={0.7}
-        onPress={toggleMute}
+        disabled={downloadBusy}
+        onPress={() => void handleDownloadPress()}
         accessibilityRole="button"
-        accessibilityLabel={isMuted ? 'Unmute' : 'Mute'}>
-        <Icon
-          name={isMuted ? 'volume-off' : 'volume-up'}
-          size={20}
-          color="rgba(128,128,128,0.6)"
-        />
+        accessibilityLabel={
+          isOffline
+            ? 'Already on this device'
+            : useVividDownloadBg
+              ? 'Download the current track'
+              : 'Download not available for this track'
+        }>
+        <LinearGradient
+          colors={[...downloadGradientColors]}
+          {...SLIDER_MUTED_GRADIENT_H}
+          style={cc.downloadCircle}>
+          {downloadBusy ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Icon name="long-arrow-alt-down" size={16} color="#fff" />
+          )}
+        </LinearGradient>
       </TouchableOpacity>
     </View>
   );
 }
 
 const cc = StyleSheet.create({
+  downloadCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   prevNext: {
     width: 52,
     height: 52,

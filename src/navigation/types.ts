@@ -13,4 +13,6 @@ export type RootStackParamList = {
   FullSongs: undefined;
   Lyrics: undefined;
   Queue: undefined;
+  Playlists: undefined;
+  PlaylistDetail: { playlistId: string };
 };

@@ -7,6 +7,7 @@ import {
   Easing,
   StyleSheet,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import {
   SafeAreaProvider,
@@ -15,7 +16,12 @@ import {
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type {
+  BottomTabBarButtonProps,
+  BottomTabNavigationOptions,
+} from '@react-navigation/bottom-tabs';
 import LinearGradient from 'react-native-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import Icon from 'react-native-vector-icons/FontAwesome5';
 import { setupPlayer, addTracks } from './services/musicPlayerServices';
 import { pingHealthCheck } from './services/streamService';
@@ -27,9 +33,13 @@ import LyricsScreen from './screens/LyricsScreen';
 import SearchScreen from './screens/SearchScreen';
 import QueueScreen from './screens/QueueScreen';
 import DownloadsScreen from './screens/DownloadsScreen';
+import PlaylistsScreen from './screens/PlaylistsScreen';
+import PlaylistDetailScreen from './screens/PlaylistDetailScreen';
+import { PlaylistProvider } from './contexts/PlaylistContext';
 import { styles } from './styles';
 import { COLORS } from './constants';
 import type { RootStackParamList, TabParamList } from './navigation/types';
+import { identifyDevice } from './utils/analytics';
 
 function LoadingScreen() {
   const insets = useSafeAreaInsets();
@@ -37,6 +47,10 @@ function LoadingScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const dotAnim = useRef(new Animated.Value(0)).current;
   const heartBeatAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    void identifyDevice();
+  }, []);
 
   useEffect(() => {
     Animated.loop(
@@ -143,7 +157,22 @@ function LoadingScreen() {
           </LinearGradient>
         </Animated.View>
 
-        <Text style={splash.brand}>Cadence</Text>
+        <MaskedView
+          style={{ alignSelf: 'center' }}
+          maskElement={
+            <Text style={splash.brand} numberOfLines={1}>
+              Cadence
+            </Text>
+          }>
+          <LinearGradient
+            colors={['#5232c1', '#12ccd0']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}>
+            <Text style={[splash.brand, { opacity: 0 }]} numberOfLines={1}>
+              Cadence
+            </Text>
+          </LinearGradient>
+        </MaskedView>
         <Text style={splash.subtitle}>Loading player</Text>
         <AnimatedDots dotAnim={dotAnim} />
       </View>
@@ -282,7 +311,7 @@ const splash = StyleSheet.create({
 });
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab   = createBottomTabNavigator<TabParamList>();
+const Tab = createBottomTabNavigator<TabParamList>();
 
 function TabIcon({ name, color, size }: { name: string; color: string; size: number }) {
   return <Icon name={name} size={size - 2} color={color} solid />;
@@ -303,28 +332,66 @@ function TabBarBackground() {
   );
 }
 
+/** Avoids `PlatformPressable` borderless ripple + tab bar top shadow, which read as a harsh dark inner edge when pressed. */
+const TabBarButton: NonNullable<BottomTabNavigationOptions['tabBarButton']> = (
+  props: BottomTabBarButtonProps,
+) => {
+  const {
+    children,
+    onPress,
+    onLongPress,
+    style,
+    testID,
+    accessibilityState,
+    'aria-label': ariaLabel,
+  } = props;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.65}
+      onPress={onPress}
+      onLongPress={onLongPress ?? undefined}
+      style={style}
+      testID={testID}
+      accessibilityState={accessibilityState}
+      accessibilityRole="tab"
+      accessibilityLabel={typeof ariaLabel === 'string' ? ariaLabel : undefined}
+    >
+      {children}
+    </TouchableOpacity>
+  );
+};
+
 function TabNavigator() {
+  const insets = useSafeAreaInsets();
+  /**
+   * Custom `tabBarStyle` drops the default bottom inset on Android (3-button / gesture nav).
+   * iOS keeps the previous fixed tab bar metrics; only Android adds `insets.bottom`.
+   */
+  const tabBarBottomPad =
+    Platform.OS === 'android' ? 8 + insets.bottom : 28;
+  const tabBarOuterHeight =
+    Platform.OS === 'android' ? 60 + insets.bottom : 83;
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor:   COLORS.playing,
+        tabBarActiveTintColor: COLORS.playing,
         tabBarInactiveTintColor: COLORS.textLight,
         tabBarBackground: () => <TabBarBackground />,
+        tabBarButton: TabBarButton,
         tabBarStyle: {
           backgroundColor: 'transparent',
           borderTopWidth: 0,
-          height:          Platform.select({ ios: 83, default: 62 }),
-          paddingBottom:   Platform.select({ ios: 28, default: 10 }),
-          paddingTop:      8,
-          elevation:       0,
-          shadowColor:     '#000',
-          shadowOffset:    { width: 0, height: -2 },
-          shadowOpacity:   0.08,
-          shadowRadius:    10,
+          height: tabBarOuterHeight,
+          paddingBottom: tabBarBottomPad,
+          paddingTop: 8,
+          elevation: 0,
+          shadowOpacity: 0,
+          shadowRadius: 0,
         },
         tabBarLabelStyle: {
-          fontSize:   11,
+          fontSize: 11,
           fontWeight: '600',
         },
       }}>
@@ -387,19 +454,23 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <View style={styles.safeArea}>
-          <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Main" component={TabNavigator} />
-            <Stack.Screen name="FullAlbums" component={FullAlbumsScreen} />
-            <Stack.Screen name="FullSongs"  component={FullSongsScreen} />
-            <Stack.Screen name="Lyrics"     component={LyricsScreen} />
-            <Stack.Screen name="Queue"      component={QueueScreen} />
-          </Stack.Navigator>
-        </View>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <PlaylistProvider>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <View style={styles.safeArea}>
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Main" component={TabNavigator} />
+              <Stack.Screen name="FullAlbums" component={FullAlbumsScreen} />
+              <Stack.Screen name="FullSongs" component={FullSongsScreen} />
+              <Stack.Screen name="Lyrics" component={LyricsScreen} />
+              <Stack.Screen name="Queue" component={QueueScreen} />
+              <Stack.Screen name="Playlists" component={PlaylistsScreen} />
+              <Stack.Screen name="PlaylistDetail" component={PlaylistDetailScreen} />
+            </Stack.Navigator>
+          </View>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </PlaylistProvider>
   );
 }

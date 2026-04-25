@@ -26,6 +26,7 @@ import SongSlider from '../components/SongSlider';
 import ControlCenter from '../components/ControlCenter';
 import ArtworkWithGlow from '../components/ArtworkWithGlow';
 import StreamRecoveryBanner from '../components/StreamRecoveryBanner';
+import DownloadSavedBanner from '../components/DownloadSavedBanner';
 import { COLORS, resolveTrackArtworkUri } from '../constants';
 import { styles } from '../styles';
 import type { RootStackParamList, TabParamList } from '../navigation/types';
@@ -129,7 +130,7 @@ export default function MusicPlayer({ navigation }: Props) {
       rotateRef.current = Animated.loop(
         Animated.timing(rotateAnim, {
           toValue: rotationValue.current + 1,
-          duration: 4000,
+          duration: 7000,
           easing: Easing.linear,
           useNativeDriver: true,
         }),
@@ -232,6 +233,7 @@ export default function MusicPlayer({ navigation }: Props) {
       </PanGestureHandler>
 
       <StreamRecoveryBanner />
+      <DownloadSavedBanner />
     </GestureHandlerRootView>
   );
 }

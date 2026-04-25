@@ -4,9 +4,11 @@ import TrackPlayer, {
   RepeatMode,
   IOSCategory,
 } from 'react-native-track-player';
+import type { Track } from 'react-native-track-player';
 import { DeviceEventEmitter } from 'react-native';
 import { tracks } from '../constants';
 import { getStreamUrl } from './streamService';
+import { track as analyticsTrack } from '../utils/analytics';
 
 // ─── Stream recovery event ────────────────────────────────────────────────────
 // Emitted from playbackService so the UI can show feedback.
@@ -20,6 +22,15 @@ const RECOVERY_COOLDOWN_MS = 15_000;
 /** Library track IDs are short numeric strings ("1", "2", …). YouTube IDs are not. */
 const isYouTubeTrack = (id?: string | number) =>
   id != null && !/^\d+$/.test(String(id));
+
+function playbackSource(t: Track): 'youtube_stream' | 'library' | 'local_file' {
+  const url = typeof t.url === 'string' ? t.url : '';
+  if (url.startsWith('file:') || (url.length > 0 && url.startsWith('/'))) {
+    return 'local_file';
+  }
+  if (isYouTubeTrack(t.id)) return 'youtube_stream';
+  return 'library';
+}
 
 let recoveryInFlight = false;
 let cooldownUntil = 0;
@@ -107,6 +118,17 @@ export const playbackService = async (): Promise<void> => {
 
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
     void TrackPlayer.stop();
+  });
+
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, ({ track }) => {
+    if (!track) return;
+    analyticsTrack('song_playing', {
+      track_id: String(track.id),
+      title: track.title ?? '',
+      artist: track.artist ?? '',
+      source: playbackSource(track),
+      duration: track.duration ?? 0,
+    });
   });
 
   TrackPlayer.addEventListener(Event.PlaybackError, async (e) => {

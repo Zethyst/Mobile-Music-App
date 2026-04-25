@@ -17,6 +17,21 @@ function parseLrc(lrc: string): LrcLine[] {
   return lines;
 }
 
+function looksLikeFakeArtist(artist: string): boolean {
+  if (!artist || artist.toLowerCase() === 'unknown') return true;
+  const wordCount = artist.trim().split(/\s+/).length;
+  return (
+    wordCount > 3                            ||   // "Obsessed With These Feelings" = 4, borderline
+    /- topic$/i.test(artist)                ||
+    /vevo$/i.test(artist)                   ||
+    /\d{4}/.test(artist)                    ||
+    /official/i.test(artist)               ||
+    /music$/i.test(artist)                 ||
+    /records?$/i.test(artist)              ||
+    /\b(HD|HQ|4K|lyrics?|audio|video)\b/i.test(artist)
+  );
+}
+
 /**
  * Strip common YouTube / streaming title noise so lrclib can match it.
  * Examples removed:
@@ -106,7 +121,9 @@ async function getExact(
 
 /** Search endpoint — fuzzy, picks the best hit by word overlap */
 async function search(title: string, artist: string): Promise<LyricsResult | null> {
-  const params = new URLSearchParams({ track_name: title, artist_name: artist });
+  const params = new URLSearchParams({ track_name: title });
+  if (artist) params.set('artist_name', artist);   // only add if non-empty
+  
   const res = await fetch(`https://lrclib.net/api/search?${params}`);
   if (!res.ok) return null;
   const hits = await res.json() as Record<string, unknown>[];
@@ -116,9 +133,11 @@ async function search(title: string, artist: string): Promise<LyricsResult | nul
     .filter(h => h.syncedLyrics || h.plainLyrics)
     .map(h => ({
       h,
-      score:
-        wordSimilarity(String(h.trackName ?? ''), title) +
-        wordSimilarity(String(h.artistName ?? ''), artist) * 0.5,
+      // When artist is fake/unknown, score only on title match
+      score: artist
+        ? wordSimilarity(String(h.trackName ?? ''), title) +
+          wordSimilarity(String(h.artistName ?? ''), artist) * 0.5
+        : wordSimilarity(String(h.trackName ?? ''), title),
     }))
     .sort((a, b) => b.score - a.score);
 
@@ -136,34 +155,42 @@ async function searchQ(q: string): Promise<LyricsResult | null> {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-
 export async function fetchLyrics(
   title: string,
   artist: string,
   duration?: number,
 ): Promise<LyricsResult> {
   try {
-    // Step 1 — exact hit with raw metadata (library tracks with clean names)
-    const step1 = await getExact(title, artist, duration);
-    if (step1) return step1;
-
-    // Step 2 — clean / parse "Artist - Title" YouTube format
     const { title: cleanedTitle, artist: cleanedArtist } = normalise(title, artist);
+    const fakeArtist = looksLikeFakeArtist(cleanedArtist);
 
-    // Step 3 — exact hit with cleaned metadata
-    if (cleanedTitle !== title || cleanedArtist !== artist) {
-      const step3 = await getExact(cleanedTitle, cleanedArtist, duration);
-      if (step3) return step3;
+    // Step 1 — exact hit with raw metadata (only if artist looks real)
+    if (!fakeArtist) {
+      const step1 = await getExact(title, artist, duration);
+      if (step1) return step1;
     }
 
-    // Step 4 — fuzzy search with cleaned fields, scored by word overlap
-    const step4 = await search(cleanedTitle, cleanedArtist);
+    // Step 2 — exact hit with cleaned metadata (skip if fake artist)
+    if (!fakeArtist && (cleanedTitle !== title || cleanedArtist !== artist)) {
+      const step2 = await getExact(cleanedTitle, cleanedArtist, duration);
+      if (step2) return step2;
+    }
+
+    // Step 3 — fuzzy search. Use real artist if we have one, else title-only
+    const step3 = fakeArtist
+      ? await search(cleanedTitle, '')       // title-only search
+      : await search(cleanedTitle, cleanedArtist);
+    if (step3) return step3;
+
+    // Step 4 — full-text fallback, title only (ignore fake artist completely)
+    const step4 = await searchQ(cleanedTitle);
     if (step4) return step4;
 
-    // Step 5 — full-text fallback (e.g. when artist is still wrong/empty)
-    const q = cleanedArtist ? `${cleanedArtist} ${cleanedTitle}` : cleanedTitle;
-    const step5 = await searchQ(q);
-    if (step5) return step5;
+    // Step 5 — if artist seemed real but still failed, try title-only too
+    if (!fakeArtist) {
+      const step5 = await searchQ(cleanedTitle);
+      if (step5) return step5;
+    }
 
     return { kind: 'none' };
   } catch {

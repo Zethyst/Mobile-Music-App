@@ -4,6 +4,7 @@ import {
   Text,
   Image,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   ActivityIndicator,
   Alert,
@@ -26,7 +27,11 @@ import {
   DOWNLOAD_PROGRESS_EVENT,
   type DownloadedTrack,
 } from '../services/downloadService';
-import { hapticLight, hapticMedium, hapticWarning } from '../utils/haptics';
+import { hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../utils/haptics';
+import AddToPlaylistModal from '../components/AddToPlaylistModal';
+import CreatePlaylistModal from '../components/CreatePlaylistModal';
+import { usePlaylists } from '../contexts/PlaylistContext';
+import type { PlaylistTrack } from '../services/playlistService';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, 'Downloads'>,
@@ -47,6 +52,11 @@ export default function DownloadsScreen(_: Props) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+  const { addTrack, createNew } = usePlaylists();
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<DownloadedTrack | null>(null);
+  const [showCreateForDl, setShowCreateForDl] = useState(false);
+  /** Long-press on a row’s action strip reveals add-to-playlist + delete. */
+  const [actionsOpenForId, setActionsOpenForId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,11 +97,11 @@ export default function DownloadsScreen(_: Props) {
     try {
       await TrackPlayer.reset();
       await TrackPlayer.add({
-        id:       track.videoId,
-        url:      track.localUri,
-        title:    track.title,
-        artist:   track.artist,
-        artwork:  track.thumbnail || DEFAULT_COVER_URI,
+        id: track.videoId,
+        url: track.localUri,
+        title: track.title,
+        artist: track.artist,
+        artwork: track.thumbnail || DEFAULT_COVER_URI,
         duration: track.duration,
       });
       await TrackPlayer.play();
@@ -126,7 +136,7 @@ export default function DownloadsScreen(_: Props) {
           },
         },
       ]),
-    0);
+      0);
   };
 
   return (
@@ -170,8 +180,8 @@ export default function DownloadsScreen(_: Props) {
             ) : (
               <View style={sh.trackList}>
                 {downloads.map(track => {
-                  const isPlaying  = playingId   === track.videoId;
-                  const isDeleting = deletingId  === track.videoId;
+                  const isPlaying = playingId === track.videoId;
+                  const isDeleting = deletingId === track.videoId;
                   const pct = downloadProgress[track.videoId];
                   return (
                     <View
@@ -202,17 +212,43 @@ export default function DownloadsScreen(_: Props) {
                         </TouchableOpacity>
 
                         <View style={ds.actions}>
-                          {isPlaying && (
-                            <Icon name="volume-up" size={14} color={COLORS.playing} style={{ marginRight: 10 }} />
-                          )}
                           {isDeleting ? (
                             <ActivityIndicator size="small" color={COLORS.primary} />
+                          ) : actionsOpenForId === track.videoId ? (
+                            <>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  hapticLight();
+                                  setAddToPlaylistTrack(track);
+                                  setActionsOpenForId(null);
+                                }}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                style={{ marginRight: 14 }}>
+                                <Icon name="list-ul" size={15} color={COLORS.primary} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setActionsOpenForId(null);
+                                  handleDelete(track);
+                                }}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <Icon name="trash-alt" size={15} color="rgba(200,60,60,0.7)" />
+                              </TouchableOpacity>
+                            </>
                           ) : (
-                            <TouchableOpacity
-                              onPress={() => handleDelete(track)}
-                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                              <Icon name="trash-alt" size={15} color="rgba(200,60,60,0.7)" />
-                            </TouchableOpacity>
+                            <Pressable
+                              onPress={() => {
+                                hapticLight();
+                                setActionsOpenForId(track.videoId);
+                              }}
+                              delayLongPress={300}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              accessibilityRole="button"
+                              accessibilityLabel="More actions, long-press to show add to playlist and delete">
+                              <View style={ds.actionLongPressTarget}>
+                                <Icon name="ellipsis-v" size={15} color={COLORS.textLight} />
+                              </View>
+                            </Pressable>
                           )}
                         </View>
                       </View>
@@ -238,6 +274,52 @@ export default function DownloadsScreen(_: Props) {
 
         <StreamRecoveryBanner />
       </View>
+      <AddToPlaylistModal
+        visible={addToPlaylistTrack != null}
+        onClose={() => setAddToPlaylistTrack(null)}
+        trackTitle={addToPlaylistTrack?.title}
+        onSelectPlaylist={async (playlistId) => {
+          if (!addToPlaylistTrack) return;
+          const track: Omit<PlaylistTrack, 'addedAt'> = {
+            videoId: addToPlaylistTrack.videoId,
+            title: addToPlaylistTrack.title,
+            artist: addToPlaylistTrack.artist,
+            thumbnail: addToPlaylistTrack.thumbnail,
+            duration: addToPlaylistTrack.duration,
+            // Downloaded tracks use local file URI — store it as streamUrl
+            // so PlaylistDetailScreen can play it without network
+            streamUrl: addToPlaylistTrack.localUri,
+          };
+          await addTrack(playlistId, track);
+          hapticSuccess();
+          setAddToPlaylistTrack(null);
+          setTimeout(() => Alert.alert('Added', `"${addToPlaylistTrack.title}" added to playlist.`), 0);
+        }}
+        onCreateNew={() => {
+          setAddToPlaylistTrack(null);
+          setTimeout(() => setShowCreateForDl(true), 350);
+        }}
+      />
+
+      <CreatePlaylistModal
+        visible={showCreateForDl}
+        onClose={() => setShowCreateForDl(false)}
+        onSave={async (data) => {
+          const pl = await createNew(data);
+          setShowCreateForDl(false);
+          if (addToPlaylistTrack) {
+            await addTrack(pl.id, {
+              videoId: addToPlaylistTrack.videoId,
+              title: addToPlaylistTrack.title,
+              artist: addToPlaylistTrack.artist,
+              thumbnail: addToPlaylistTrack.thumbnail,
+              duration: addToPlaylistTrack.duration,
+              streamUrl: addToPlaylistTrack.localUri,
+            });
+            setAddToPlaylistTrack(null);
+          }
+        }}
+      />
     </ScreenWithMiniPlayer>
   );
 }
@@ -260,6 +342,12 @@ const ds = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 8,
+  },
+  actionLongPressTarget: {
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   progressTrack: {
     width: '100%',

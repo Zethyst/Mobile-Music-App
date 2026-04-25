@@ -17,7 +17,6 @@ import TrackPlayer, {
   State,
 } from 'react-native-track-player';
 import { useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/FontAwesome5';
 import { DEFAULT_COVER_URI, COLORS, resolveTrackArtworkUri } from '../constants';
@@ -32,14 +31,14 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
 type MiniNav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * Floating bar — `bottom` is measured from the bottom of the screen scene.
- * Tab scenes already omit the tab bar area, so do **not** add `useBottomTabBarHeight` here
- * (that would double the gap above the tabs).
+ * Floating bar — `bottom` is from the **tab screen’s** bottom (top edge of the tab bar).
+ * The system nav / gesture area is *below* the tab bar, so it must **not** be added here:
+ * `useSafeAreaInsets().bottom` on Android would add ~48px and create a large gap on many devices
+ * (same inset the tab bar already accounts for in `App.tsx`).
+ * Do not add `useBottomTabBarHeight` either — the scene is already above the bar.
  */
 export default function MiniPlayer() {
-  const insets = useSafeAreaInsets();
-  const bottom = Platform.OS === 'android' ? 4 + insets.bottom : 4;
-  return <MiniPlayerInner bottom={bottom} />;
+  return <MiniPlayerInner bottom={4} />;
 }
 
 function MiniPlayerInner({ bottom }: { bottom: number }) {
@@ -172,7 +171,8 @@ function MiniPlayerInner({ bottom }: { bottom: number }) {
 }
 
 const PILL_H = 72;
-const INNER_BTN = SIZE - STROKE * 2 - 4;
+/** Match the ring’s inside edge: path radius is `R` and stroke is centered, so inner diameter is `SIZE - 2*STROKE`. */
+const INNER_BTN = SIZE - 2 * STROKE;
 
 const mp = StyleSheet.create({
   wrapper: {
@@ -220,6 +220,7 @@ const mp = StyleSheet.create({
     opacity: 0.7,
   },
   btnWrapper: {
+    backgroundColor: 'transparent',
     width: SIZE,
     height: SIZE,
     justifyContent: 'center',
