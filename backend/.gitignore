@@ -2,3 +2,14 @@ node_modules
 dist
 bin/yt-dlp
 .env
+# Never commit the raw session directory — it contains auth tokens
+yt_session/
+
+# cookies.txt is committed intentionally by the GitHub Action bot
+# If you want to exclude it from manual commits, uncomment:
+# cookies.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
