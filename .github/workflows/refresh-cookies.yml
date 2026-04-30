@@ -2,10 +2,8 @@ name: Refresh YouTube Cookies
 
 on:
   schedule:
-    # Runs every day at 3:00 AM UTC (adjust to your timezone)
-    - cron: "0 3 * * *"
+    - cron: "0 3 * * *"   # daily at 3:00 AM UTC
 
-  # Also allow manual trigger from GitHub UI
   workflow_dispatch:
     inputs:
       force_login:
@@ -23,18 +21,14 @@ jobs:
     timeout-minutes: 10
 
     permissions:
-      contents: write   # needed to push cookies.txt back to the repo
+      contents: write
 
     steps:
-      # ── 1. Checkout ─────────────────────────────────────────────────────────
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          # Use a PAT so the push step can trigger other workflows (e.g. Render deploy)
-          # If you don't need that, remove token: and use the default GITHUB_TOKEN
           token: ${{ secrets.GH_PAT }}
 
-      # ── 2. Python ───────────────────────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -46,51 +40,28 @@ jobs:
           pip install playwright
           playwright install chromium --with-deps
 
-      # ── 3. Restore cached browser session ───────────────────────────────────
-      - name: Restore session cache
-        id: session-cache
-        uses: actions/cache@v4
-        with:
-          path: yt_session/
-          # Cache key is fixed — we always want to restore the same session.
-          # The session is updated and re-saved after each run.
-          key: yt-session-v1
-          restore-keys: |
-            yt-session-v1
-
-      # ── 4. Restore encrypted session backup (from secret) ───────────────────
-      # This is the fallback if the Actions cache is evicted (after 7 days of no use).
-      # We store a base64-encoded tar of yt_session/ as a GitHub secret.
-      - name: Restore session from secret (if cache miss)
-        if: steps.session-cache.outputs.cache-hit != 'true'
-        env:
-          YT_SESSION_B64: ${{ secrets.YT_SESSION_B64 }}
-        run: |
-          if [ -n "$YT_SESSION_B64" ]; then
-            echo "Cache miss — restoring session from secret..."
-            mkdir -p yt_session
-            echo "$YT_SESSION_B64" | base64 -d | tar -xz -C yt_session/
-            echo "Session restored from secret."
-          else
-            echo "No session secret found. Will fail if cookies.txt is needed immediately."
-            echo "Run: python refresh_cookies.py --setup  (locally) then upload the session."
-          fi
-
-      # ── 5. Run the refresher ─────────────────────────────────────────────────
       - name: Refresh cookies
         env:
           HEADLESS: "true"
-          YT_SESSION_DIR: "./yt_session"
           COOKIES_OUTPUT: "./backend/cookies.txt"
-          YT_PROXY: ${{ secrets.YT_PROXY }}        # optional: "http://user:pass@host:port"
-        run: |
-          ARGS=""
-          if [ "${{ github.event.inputs.force_login }}" = "true" ]; then
-            ARGS="--force-login"
-          fi
-          python backend/refresh_cookies.py $ARGS
+          YT_COOKIES_JSON: ${{ secrets.YT_COOKIES_JSON }}
+          YT_PROXY: ${{ secrets.YT_PROXY }}
+        run: python backend/refresh_cookies.py
 
-      # ── 6. Commit & push cookies.txt ────────────────────────────────────────
+      - name: Update YT_COOKIES_JSON secret
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -f /tmp/yt_cookies_refreshed.json ]; then
+            gh secret set YT_COOKIES_JSON \
+              --repo ${{ github.repository }} \
+              < /tmp/yt_cookies_refreshed.json
+            echo "YT_COOKIES_JSON secret updated."
+          else
+            echo "No refreshed cookies file found — skipping secret update."
+          fi
+
       - name: Commit updated cookies
         run: |
           git config user.name  "github-actions[bot]"
@@ -98,7 +69,6 @@ jobs:
 
           git add backend/cookies.txt
 
-          # Only commit if something actually changed
           if git diff --staged --quiet; then
             echo "cookies.txt unchanged — skipping commit."
           else
@@ -106,33 +76,3 @@ jobs:
             git push
             echo "Pushed updated cookies.txt"
           fi
-
-      # ── 7. Re-save session cache ─────────────────────────────────────────────
-      # Force-update the cache so the session stays fresh even between cache expirations.
-      - name: Save session cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: yt_session/
-          key: yt-session-v1-${{ github.run_id }}
-
-      # ── 8. Update session backup secret ─────────────────────────────────────
-      # Keeps the YT_SESSION_B64 secret in sync so cache misses still work.
-      # Requires GH_PAT with `secrets` write permission on the repo.
-      - name: Update session secret backup
-        if: success()
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          if [ -d "yt_session" ] && [ -n "$GH_PAT" ]; then
-            ENCODED=$(tar -cz -C yt_session/ . | base64 -w 0)
-
-            # Use GitHub API to update the secret
-            # Requires: gh CLI (pre-installed on ubuntu-latest)
-            echo "$ENCODED" | gh secret set YT_SESSION_B64 \
-              --repo "$GITHUB_REPOSITORY" \
-              --body "$(cat -)"
-            echo "Session secret updated."
-          fi
-        continue-on-error: true   # don't fail the whole job if secret update fails
