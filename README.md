@@ -4,7 +4,7 @@ A full-stack React Native music app (TypeScript) with a Node/Express backend tha
 
 ## 📱 Download APK
 
-Download the latest APK: **[Download APK](https://drive.google.com/file/d/1gEdhr837j26wb1u0ZoxRAdXawVsEVNXC/view?usp=sharing)** 🚀
+Download the latest APK: **[Download APK](https://drive.google.com/file/d/1sqZC7tMjBtUllX_1wDN_dJg7I4orOkg7/view?usp=sharing)** 🚀
 
 ## Tech stack
 
